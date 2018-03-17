@@ -29,7 +29,39 @@ enum Reg {
     H,
     L,
     M,
-    Psw,
+}
+
+impl From<u8> for Reg {
+    fn from(v: u8) -> Self {
+        use Reg::*;
+        match v {
+            0x00 => B,
+            0x01 => C,
+            0x02 => D,
+            0x03 => E,
+            0x04 => H,
+            0x05 => L,
+            0x06 => M,
+            0x07 => A,
+            invalid => panic!("Invalid reg opcode {}", invalid)
+        }
+    }
+}
+
+impl Reg {
+    fn opcode(self) -> u8 {
+        use Reg::*;
+        match self {
+            B => 0x0,
+            C => 0x1,
+            D => 0x2,
+            E => 0x3,
+            H => 0x4,
+            L => 0x5,
+            M => 0x6,
+            A => 0x7,
+         }
+    }
 }
 
 #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
@@ -38,6 +70,14 @@ enum RegPair {
     DE,
     HL,
     SP
+}
+
+#[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
+enum BytePair {
+    BC,
+    DE,
+    HL,
+    AF
 }
 
 impl std::fmt::Display for Reg {
@@ -52,14 +92,31 @@ impl std::fmt::Display for Reg {
                 H => "H",
                 L => "L",
                 M => "M",
-                Psw => "PSW",
             }
         )
     }
 }
 
+impl RegPair {
+    fn opcode(self) -> u8 {
+        use RegPair::*;
+        match self {
+            BC => 0x00,
+            DE => 0x10,
+            HL => 0x20,
+            SP => 0x30,
+        }
+    }
+
+    fn is_basic(self) -> bool {
+        use RegPair::*;
+        [BC, DE].contains(&self)
+    }
+}
+
 impl std::fmt::Display for RegPair {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use RegPair::*;
         write!(f, "{}",
                match *self {
                    BC => "BC",
@@ -71,8 +128,33 @@ impl std::fmt::Display for RegPair {
     }
 }
 
+impl BytePair {
+    fn opcode(self) -> u8 {
+        use BytePair::*;
+        match self {
+            BC => 0xc0,
+            DE => 0xd0,
+            HL => 0xe0,
+            AF => 0xf0,
+        }
+    }
+}
+
+impl std::fmt::Display for BytePair {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use BytePair::*;
+        write!(f, "{}",
+               match *self {
+                   BC => "BC",
+                   DE => "DE",
+                   HL => "HL",
+                   AF => "PSW",
+               }
+        )
+    }
+}
+
 use Reg::*;
-use RegPair::*;
 use Opcode::*;
 
 #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
@@ -85,7 +167,7 @@ enum Opcode {
     Dcr(Reg),
     Jump(u16),
     Sta(u16),
-    Push(Reg),
+    Push(BytePair),
     Mvi(Reg, u8),
     Rlc,
     Rrc,
@@ -101,7 +183,8 @@ enum Opcode {
     Cmc,
     Lhld(u16),
     Stc,
-    Lda(u16)
+    Lda(u16),
+    Mov(Reg, Reg)
 }
 
 struct CodeIterator<I: Iterator<Item=u8>> {
@@ -120,68 +203,69 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
     fn next_opcode(&mut self) -> Option<Opcode> {
         Some(match self.code_iterator.next()? {
             0x00 => Nop,
-            0x01 => Lxi(BC, self.u16_data()?),
-            0x02 => Stax(BC),
-            0x03 => Inx(BC),
+            0x01 => Lxi(RegPair::BC, self.u16_data()?),
+            0x02 => Stax(RegPair::BC),
+            0x03 => Inx(RegPair::BC),
             0x04 => Inr(B),
             0x05 => Dcr(B),
             0x06 => Mvi(B, self.u8_data()?),
             0x07 => Rlc,
-            0x09 => Dad(BC),
-            0x0a => Ldax(BC),
-            0x0b => Dcx(BC),
+            0x09 => Dad(RegPair::BC),
+            0x0a => Ldax(RegPair::BC),
+            0x0b => Dcx(RegPair::BC),
             0x0c => Inr(C),
             0x0d => Dcr(C),
             0x0e => Mvi(C, self.u8_data()?),
             0x0f => Rrc,
-            0x11 => Lxi(DE, self.u16_data()?),
-            0x12 => Stax(DE),
-            0x13 => Inx(DE),
+            0x11 => Lxi(RegPair::DE, self.u16_data()?),
+            0x12 => Stax(RegPair::DE),
+            0x13 => Inx(RegPair::DE),
             0x14 => Inr(D),
             0x15 => Dcr(D),
             0x16 => Mvi(D, self.u8_data()?),
             0x17 => Ral,
-            0x19 => Dad(DE),
-            0x1a => Ldax(DE),
-            0x1b => Dcx(DE),
+            0x19 => Dad(RegPair::DE),
+            0x1a => Ldax(RegPair::DE),
+            0x1b => Dcx(RegPair::DE),
             0x1c => Inr(E),
             0x1d => Dcr(E),
             0x1e => Mvi(E, self.u8_data()?),
             0x1f => Rar,
             0x20 => Rim,
-            0x21 => Lxi(HL, self.u16_data()?),
-            0x23 => Inx(HL),
+            0x21 => Lxi(RegPair::HL, self.u16_data()?),
+            0x23 => Inx(RegPair::HL),
             0x24 => Inr(H),
             0x25 => Dcr(H),
             0x26 => Mvi(H, self.u8_data()?),
             0x27 => Daa,
-            0x29 => Dad(HL),
+            0x29 => Dad(RegPair::HL),
             0x2a => Lhld(self.u16_data()?),
-            0x2b => Dcx(HL),
+            0x2b => Dcx(RegPair::HL),
             0x2c => Inr(L),
             0x2d => Dcr(L),
             0x2e => Mvi(L, self.u8_data()?),
             0x2f => Cma,
             0x30 => Sim,
-            0x31 => Lxi(SP, self.u16_data()?),
+            0x31 => Lxi(RegPair::SP, self.u16_data()?),
             0x32 => Sta(self.u16_data()?),
-            0x33 => Inx(SP),
+            0x33 => Inx(RegPair::SP),
             0x34 => Inr(M),
             0x35 => Dcr(M),
             0x36 => Mvi(M, self.u8_data()?),
             0x37 => Stc,
-            0x39 => Dad(SP),
+            0x39 => Dad(RegPair::SP),
             0x3a => Lda(self.u16_data()?),
-            0x3b => Dcx(SP),
+            0x3b => Dcx(RegPair::SP),
             0x3c => Inr(A),
             0x3d => Dcr(A),
             0x3e => Mvi(A, self.u8_data()?),
             0x3f => Cmc,
+            v if v >= 0x40 && v <= 0x7f => Mov(((v-0x40)>>3).into(), (v & 0x07).into()),
             0xc3 => Jump(self.u16_data()?),
-            0xc5 => Push(B),
-            0xd5 => Push(D),
-            0xe5 => Push(H),
-            0xf5 => Push(Psw),
+            0xc5 => Push(BytePair::BC),
+            0xd5 => Push(BytePair::DE),
+            0xe5 => Push(BytePair::HL),
+            0xf5 => Push(BytePair::AF),
             c => {eprint!("Not implemented yet '{:02x}' opcode", c); Nop}
         }
         )
@@ -214,22 +298,11 @@ impl Opcode {
     fn code(&self) -> u8 {
         match *self {
             Nop => 0x00,
-            Lxi(BC, _) => 0x01,
-            Lxi(DE, _) => 0x11,
-            Lxi(HL, _) => 0x21,
-            Lxi(SP, _) => 0x31,
-            Ldax(BC) => 0x0a,
-            Ldax(DE) => 0x1a,
-            Dcx(BC) => 0x0b,
-            Dcx(DE) => 0x1b,
-            Dcx(HL) => 0x2b,
-            Dcx(SP) => 0x3b,
-            Stax(BC) => 0x02,
-            Stax(DE) => 0x12,
-            Inx(BC) => 0x03,
-            Inx(DE) => 0x13,
-            Inx(HL) => 0x23,
-            Inx(SP) => 0x33,
+            Lxi(rp, _) => 0x01 | rp.opcode(),
+            Stax(rp) if rp.is_basic() => 0x02 | rp.opcode(),
+            Inx(rp) => 0x03 | rp.opcode(),
+            Ldax(rp) if rp.is_basic() => 0x0a | rp.opcode(),
+            Dcx(rp) => 0x0b | rp.opcode(),
             Inr(B) => 0x04,
             Inr(C) => 0x0c,
             Inr(D) => 0x14,
@@ -256,9 +329,7 @@ impl Opcode {
             Mvi(A, _) => 0x3e,
             Sta(_) => 0x32,
             Jump(_) => 0xc3,
-            Push(B) => 0xc5,
-            Push(D) => 0xd5,
-            Push(H) => 0xe5,
+            Push(bp) => 0x05 | bp.opcode(),
             Rlc => 0x07,
             Rrc => 0x0f,
             Ral => 0x17,
@@ -271,17 +342,10 @@ impl Opcode {
             Cmc => 0x3f,
             Lhld(_) => 0x2a,
             Lda(_) => 0x3a,
-            Dad(BC) => 0x09,
-            Dad(DE) => 0x19,
-            Dad(HL) => 0x29,
-            Dad(SP) => 0x39,
-            Push(Psw) => 0xf5,
-            Push(_) => panic!("Invalid syntax!"),
-            Mvi(_, _) => panic!("Invalid syntax!"),
+            Dad(rp) => 0x09 | rp.opcode(),
+            Mov(r0, r1) => (0x40 + (r0.opcode() << 3)) | r1.opcode(),
             Ldax(_) => panic!("Invalid syntax!"),
             Stax(_) => panic!("Invalid syntax!"),
-            Inr(_) => panic!("Invalid syntax!"),
-            Dcr(_) => panic!("Invalid syntax!"),
         }
     }
 
@@ -311,7 +375,7 @@ impl std::fmt::Display for Opcode {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match *self {
             Nop => write!(f, "NOP"),
-            Lxi(SP, addr) => write!(f, "LXI    SP,${:04x}", addr),
+            Lxi(RegPair::SP, addr) => write!(f, "LXI    SP,${:04x}", addr),
             Lxi(rp, data) => write!(f, "LXI    {},#0x{:04x}", rp, data),
             Ldax(rp) => write!(f, "LDAX   {}", rp),
             Stax(rp) => write!(f, "STAX   {}", rp),
@@ -336,6 +400,8 @@ impl std::fmt::Display for Opcode {
             Cmc => write!(f, "CMC"),
             Dad(rp) => write!(f, "DAD    {}", rp),
             Dcx(rp) => write!(f, "DCX    {}", rp),
+            Mov(r0, M) => write!(f, "MOV    {} <- (HL)", r0),
+            Mov(r0, r1) => write!(f, "MOV    {} <- {}", r0, r1),
         }
     }
 }
@@ -443,10 +509,26 @@ mod test {
         case("3d", 0x3d, 1, "DCR    A"),
         case("3e 80", 0x3e, 2, "MVI    A,#0x80"),
         case("3f", 0x3f, 1, "CMC"),
+        case("40", 0x40, 1, "MOV    B <- B"),
+        case("41", 0x41, 1, "MOV    B <- C"),
+        case("42", 0x42, 1, "MOV    B <- D"),
+        case("43", 0x43, 1, "MOV    B <- E"),
+        case("44", 0x44, 1, "MOV    B <- H"),
+        case("45", 0x45, 1, "MOV    B <- L"),
+        case("46", 0x46, 1, "MOV    B <- (HL)"),
+        case("47", 0x47, 1, "MOV    B <- A"),
+        case("48", 0x48, 1, "MOV    C <- B"),
+        case("49", 0x49, 1, "MOV    C <- C"),
+        case("4a", 0x4a, 1, "MOV    C <- D"),
+        case("4b", 0x4b, 1, "MOV    C <- E"),
+        case("4c", 0x4c, 1, "MOV    C <- H"),
+        case("4d", 0x4d, 1, "MOV    C <- L"),
+        case("4e", 0x4e, 1, "MOV    C <- (HL)"),
+        case("4f", 0x4f, 1, "MOV    C <- A"),
         case("c3 d4 18", 0xc3, 3, "JMP    $18d4"),
-        case("c5", 0xc5, 1, "PUSH   B"),
-        case("d5", 0xd5, 1, "PUSH   D"),
-        case("e5", 0xe5, 1, "PUSH   H"),
+        case("c5", 0xc5, 1, "PUSH   BC"),
+        case("d5", 0xd5, 1, "PUSH   DE"),
+        case("e5", 0xe5, 1, "PUSH   HL"),
         case("f5", 0xf5, 1, "PUSH   PSW")
     )
     ]
