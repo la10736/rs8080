@@ -31,5 +31,5 @@ fn space_invaders_head() {
     let stdout = std::str::from_utf8(&out.stdout).unwrap().trim();
 
     assert!(stdout.contains(expected), "\n{} \n NOT CONTAIN \n {}",
-            unsafe {stdout.slice_unchecked(0, (expected.len() + 50))}, expected )
+            &stdout.to_string()[0..(expected.len() + 50)], expected )
 }
