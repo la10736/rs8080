@@ -168,6 +168,27 @@ impl std::fmt::Display for BytePair {
     }
 }
 
+#[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
+enum IrqAddr {
+    I0,
+    I1,
+    I2,
+    I3,
+}
+
+impl IrqAddr {
+    fn irq_address(&self) -> u8 {
+        use IrqAddr::*;
+        match *self {
+            I0 => 0x08,
+            I1 => 0x10,
+            I2 => 0x18,
+            I3 => 0x20,
+        }
+    }
+}
+
+
 use Reg::*;
 use Opcode::*;
 
@@ -216,6 +237,7 @@ enum Opcode {
     Sui(u8),
     Ani(u8),
     Ori(u8),
+    Rst(IrqAddr)
 }
 
 struct CodeIterator<I: Iterator<Item=u8>> {
@@ -308,9 +330,13 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             0xc4 => Cnz(self.u16_data()?),
             v if (v & 0xf0) >= 0xc0 && (v & 0x0f) == 0x5 => Push((v & 0xf0).into()),
             0xc6 => Adi(self.u8_data()?),
+            0xc7 => Rst(IrqAddr::I0),
             0xd6 => Sui(self.u8_data()?),
+            0xd7 => Rst(IrqAddr::I1),
             0xe6 => Ani(self.u8_data()?),
+            0xe7 => Rst(IrqAddr::I2),
             0xf6 => Ori(self.u8_data()?),
+            0xf7 => Rst(IrqAddr::I3),
             c => {eprint!("Not implemented yet '{:02x}' opcode", c); Nop}
         }
         )
@@ -385,6 +411,10 @@ impl Opcode {
             Cmp(r) => 0xb8 + r.opcode(),
             Rnz => 0xc0,
             Pop(bp) => 0x01 | bp.opcode(),
+            Rst(IrqAddr::I0) => 0xc7,
+            Rst(IrqAddr::I1) => 0xd7,
+            Rst(IrqAddr::I2) => 0xe7,
+            Rst(IrqAddr::I3) => 0xf7,
             Ldax(_) => panic!("Invalid syntax!"),
             Stax(_) => panic!("Invalid syntax!"),
         }
@@ -455,6 +485,7 @@ impl std::fmt::Display for Opcode {
             Xra(r) => write!(f, "XRA    {}", r),
             Ora(r) => write!(f, "ORA    {}", r),
             Cmp(r) => write!(f, "CMP    {}", r),
+            Rst(i) => write!(f, "RST    ${:02x}", i.irq_address()),
             Rnz => write!(f, "RNZ"),
         }
     }
@@ -698,15 +729,19 @@ mod test {
         case("c4 af de", 0xc4, 3, "CNZ    $deaf"),
         case("c5", 0xc5, 1, "PUSH   BC"),
         case("c6 02", 0xc6, 2, "ADI    #0x02"),
+        case("c7", 0xc7, 1, "RST    $08"),
         case("d1", 0xd1, 1, "POP    DE"),
         case("d5", 0xd5, 1, "PUSH   DE"),
         case("d6 e3", 0xd6, 2, "SUI    #0xe3"),
+        case("d7", 0xd7, 1, "RST    $10"),
         case("e1", 0xe1, 1, "POP    HL"),
         case("e5", 0xe5, 1, "PUSH   HL"),
         case("e6 32", 0xe6, 2, "ANI    #0x32"),
+        case("e7", 0xe7, 1, "RST    $18"),
         case("f1", 0xf1, 1, "POP    PSW"),
         case("f5", 0xf5, 1, "PUSH   PSW"),
         case("f6 a4", 0xf6, 2, "ORI    #0xa4"),
+        case("f7", 0xf7, 1, "RST    $20"),
     )
     ]
     fn opcode_parser(bytes: &str, code: u8, length: u16, desc: &str) {
