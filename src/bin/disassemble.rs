@@ -140,6 +140,20 @@ impl BytePair {
     }
 }
 
+impl From<u8> for BytePair {
+    fn from(v: u8) -> Self {
+        use BytePair::*;
+        match v {
+            0xc0 => BC,
+            0xd0 => DE,
+            0xe0 => HL,
+            0xf0 => AF,
+            invalid => panic!("Invalid byte pair opcode {}", invalid)
+        }
+    }
+}
+
+
 impl std::fmt::Display for BytePair {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use BytePair::*;
@@ -166,6 +180,8 @@ enum Opcode {
     Inr(Reg),
     Dcr(Reg),
     Jump(u16),
+    JumpZ(u16),
+    Cnz(u16),
     Sta(u16),
     Push(BytePair),
     Mvi(Reg, u8),
@@ -193,7 +209,9 @@ enum Opcode {
     Xra(Reg),
     Ora(Reg),
     Cmp(Reg),
-    Hlt
+    Hlt,
+    Rnz,
+    Pop(BytePair),
 }
 
 struct CodeIterator<I: Iterator<Item=u8>> {
@@ -279,11 +297,12 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             v if v >= 0xa8 && v <= 0xaf => Xra((v-0xa8).into()),
             v if v >= 0xb0 && v <= 0xb7 => Ora((v-0xb0).into()),
             v if v >= 0xb8 && v <= 0xbf => Cmp((v-0xb8).into()),
+            0xc0 => Rnz,
+            v if (v & 0xf0) >= 0xc0 && (v & 0x0f) == 0x1 => Pop((v & 0xf0).into()),
+            0xc2 => JumpZ(self.u16_data()?),
             0xc3 => Jump(self.u16_data()?),
-            0xc5 => Push(BytePair::BC),
-            0xd5 => Push(BytePair::DE),
-            0xe5 => Push(BytePair::HL),
-            0xf5 => Push(BytePair::AF),
+            0xc4 => Cnz(self.u16_data()?),
+            v if (v & 0xf0) >= 0xc0 && (v & 0x0f) == 0x5 => Push((v & 0xf0).into()),
             c => {eprint!("Not implemented yet '{:02x}' opcode", c); Nop}
         }
         )
@@ -326,7 +345,9 @@ impl Opcode {
             Mvi(r, _) => 0x06 | r.opcode() << 3,
             Hlt => 0x76,
             Sta(_) => 0x32,
+            JumpZ(_) => 0xc2,
             Jump(_) => 0xc3,
+            Cnz(_) => 0xc4,
             Push(bp) => 0x05 | bp.opcode(),
             Rlc => 0x07,
             Rrc => 0x0f,
@@ -350,6 +371,8 @@ impl Opcode {
             Xra(r) => 0xa8 + r.opcode(),
             Ora(r) => 0xb0 + r.opcode(),
             Cmp(r) => 0xb8 + r.opcode(),
+            Rnz => 0xc0,
+            Pop(bp) => 0x01 | bp.opcode(),
             Ldax(_) => panic!("Invalid syntax!"),
             Stax(_) => panic!("Invalid syntax!"),
         }
@@ -357,7 +380,8 @@ impl Opcode {
 
     fn length(&self) -> u16 {
         match *self {
-            Jump(_) | Sta(_) | Lda(_) | Lhld(_) | Lxi(_, _) => 3,
+            Jump(_) | JumpZ(_) | Cnz(_) | Sta(_) |
+            Lda(_) | Lhld(_) | Lxi(_, _) => 3,
             Mvi(_, _) => 2,
             _ => 1
         }
@@ -386,10 +410,13 @@ impl std::fmt::Display for Opcode {
             Dcr(r) => write!(f,  "DCR    {}", r),
             Mvi(reg, data) => write!(f, "MVI    {},#0x{:02x}", reg, data),
             Sta(offset) => write!(f, "STA    ${:04x}", offset),
+            JumpZ(offset) => write!(f, "JNZ    ${:04x}", offset),
             Jump(offset) => write!(f, "JMP    ${:04x}", offset),
+            Cnz(offset) => write!(f, "CNZ    ${:04x}", offset),
             Lda(addr) => write!(f, "LDA    ${:04x}", addr),
             Lhld(addr) => write!(f, "LHLD   ${:04x}", addr),
             Push(reg) => write!(f, "PUSH   {}", reg),
+            Pop(reg) => write!(f, "POP    {}", reg),
             Rlc => write!(f, "RLC"),
             Rrc => write!(f, "RRC"),
             Ral => write!(f, "RAL"),
@@ -412,6 +439,7 @@ impl std::fmt::Display for Opcode {
             Xra(r) => write!(f, "XRA    {}", r),
             Ora(r) => write!(f, "ORA    {}", r),
             Cmp(r) => write!(f, "CMP    {}", r),
+            Rnz => write!(f, "RNZ"),
         }
     }
 }
@@ -647,10 +675,17 @@ mod test {
         case("bd", 0xbd, 1, "CMP    L"),
         case("be", 0xbe, 1, "CMP    (HL)"),
         case("bf", 0xbf, 1, "CMP    A"),
+        case("c0", 0xc0, 1, "RNZ"),
+        case("c1", 0xc1, 1, "POP    BC"),
+        case("c2 18 d4", 0xc2, 3, "JNZ    $d418"),
         case("c3 d4 18", 0xc3, 3, "JMP    $18d4"),
+        case("c4 af de", 0xc4, 3, "CNZ    $deaf"),
         case("c5", 0xc5, 1, "PUSH   BC"),
+        case("d1", 0xd1, 1, "POP    DE"),
         case("d5", 0xd5, 1, "PUSH   DE"),
+        case("e1", 0xe1, 1, "POP    HL"),
         case("e5", 0xe5, 1, "PUSH   HL"),
+        case("f1", 0xf1, 1, "POP    PSW"),
         case("f5", 0xf5, 1, "PUSH   PSW")
     )
     ]
