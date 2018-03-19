@@ -212,6 +212,10 @@ enum Opcode {
     Hlt,
     Rnz,
     Pop(BytePair),
+    Adi(u8),
+    Sui(u8),
+    Ani(u8),
+    Ori(u8),
 }
 
 struct CodeIterator<I: Iterator<Item=u8>> {
@@ -303,6 +307,10 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             0xc3 => Jump(self.u16_data()?),
             0xc4 => Cnz(self.u16_data()?),
             v if (v & 0xf0) >= 0xc0 && (v & 0x0f) == 0x5 => Push((v & 0xf0).into()),
+            0xc6 => Adi(self.u8_data()?),
+            0xd6 => Sui(self.u8_data()?),
+            0xe6 => Ani(self.u8_data()?),
+            0xf6 => Ori(self.u8_data()?),
             c => {eprint!("Not implemented yet '{:02x}' opcode", c); Nop}
         }
         )
@@ -349,6 +357,10 @@ impl Opcode {
             Jump(_) => 0xc3,
             Cnz(_) => 0xc4,
             Push(bp) => 0x05 | bp.opcode(),
+            Adi(_) => 0xc6,
+            Sui(_) => 0xd6,
+            Ani(_) => 0xe6,
+            Ori(_) => 0xf6,
             Rlc => 0x07,
             Rrc => 0x0f,
             Ral => 0x17,
@@ -382,7 +394,7 @@ impl Opcode {
         match *self {
             Jump(_) | JumpZ(_) | Cnz(_) | Sta(_) |
             Lda(_) | Lhld(_) | Lxi(_, _) => 3,
-            Mvi(_, _) => 2,
+            Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) => 2,
             _ => 1
         }
     }
@@ -417,6 +429,10 @@ impl std::fmt::Display for Opcode {
             Lhld(addr) => write!(f, "LHLD   ${:04x}", addr),
             Push(reg) => write!(f, "PUSH   {}", reg),
             Pop(reg) => write!(f, "POP    {}", reg),
+            Adi(data) => write!(f, "ADI    #0x{:02x}", data),
+            Sui(data) => write!(f, "SUI    #0x{:02x}", data),
+            Ani(data) => write!(f, "ANI    #0x{:02x}", data),
+            Ori(data) => write!(f, "ORI    #0x{:02x}", data),
             Rlc => write!(f, "RLC"),
             Rrc => write!(f, "RRC"),
             Ral => write!(f, "RAL"),
@@ -681,12 +697,16 @@ mod test {
         case("c3 d4 18", 0xc3, 3, "JMP    $18d4"),
         case("c4 af de", 0xc4, 3, "CNZ    $deaf"),
         case("c5", 0xc5, 1, "PUSH   BC"),
+        case("c6 02", 0xc6, 2, "ADI    #0x02"),
         case("d1", 0xd1, 1, "POP    DE"),
         case("d5", 0xd5, 1, "PUSH   DE"),
+        case("d6 e3", 0xd6, 2, "SUI    #0xe3"),
         case("e1", 0xe1, 1, "POP    HL"),
         case("e5", 0xe5, 1, "PUSH   HL"),
+        case("e6 32", 0xe6, 2, "ANI    #0x32"),
         case("f1", 0xf1, 1, "POP    PSW"),
-        case("f5", 0xf5, 1, "PUSH   PSW")
+        case("f5", 0xf5, 1, "PUSH   PSW"),
+        case("f6 a4", 0xf6, 2, "ORI    #0xa4"),
     )
     ]
     fn opcode_parser(bytes: &str, code: u8, length: u16, desc: &str) {
