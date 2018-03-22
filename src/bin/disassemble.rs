@@ -8,7 +8,7 @@ fn main() {
     let path = std::env::args().nth(1)
         .expect("At least one argument as path of code to disassemble");
 
-    let mut code= Default::default();
+    let mut code = Default::default();
     std::fs::File::open(path)
         .unwrap()
         .read_to_end(&mut code)
@@ -60,7 +60,7 @@ impl Reg {
             L => 0x5,
             M => 0x6,
             A => 0x7,
-         }
+        }
     }
 }
 
@@ -69,7 +69,7 @@ enum RegPair {
     BC,
     DE,
     HL,
-    SP
+    SP,
 }
 
 #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
@@ -77,23 +77,37 @@ enum BytePair {
     BC,
     DE,
     HL,
-    AF
+    AF,
 }
 
 impl std::fmt::Display for Reg {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use Reg::*;
         write!(f, "{}",
-            match *self {
-                A => "A",
-                B => "B",
-                C => "C",
-                D => "D",
-                E => "E",
-                H => "H",
-                L => "L",
-                M => "(HL)",
-            }
+               match *self {
+                   A => "A",
+                   B => "B",
+                   C => "C",
+                   D => "D",
+                   E => "E",
+                   H => "H",
+                   L => "L",
+                   M => "(HL)",
+               }
         )
+    }
+}
+
+impl From<u8> for RegPair {
+    fn from(v: u8) -> Self {
+        use RegPair::*;
+        match v {
+            0x00 => BC,
+            0x10 => DE,
+            0x20 => HL,
+            0x30 => SP,
+            invalid => panic!("Invalid reg pair opcode 0x{:02x}", invalid)
+        }
     }
 }
 
@@ -132,10 +146,10 @@ impl BytePair {
     fn opcode(self) -> u8 {
         use BytePair::*;
         match self {
-            BC => 0xc0,
-            DE => 0xd0,
-            HL => 0xe0,
-            AF => 0xf0,
+            BC => 0x00,
+            DE => 0x10,
+            HL => 0x20,
+            AF => 0x30,
         }
     }
 }
@@ -144,15 +158,14 @@ impl From<u8> for BytePair {
     fn from(v: u8) -> Self {
         use BytePair::*;
         match v {
-            0xc0 => BC,
-            0xd0 => DE,
-            0xe0 => HL,
-            0xf0 => AF,
-            invalid => panic!("Invalid byte pair opcode {}", invalid)
+            0x00 => BC,
+            0x10 => DE,
+            0x20 => HL,
+            0x30 => AF,
+            invalid => panic!("Invalid byte pair opcode 0x{:02x}", invalid)
         }
     }
 }
-
 
 impl std::fmt::Display for BytePair {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -174,22 +187,120 @@ enum IrqAddr {
     I1,
     I2,
     I3,
+    I4,
+    I5,
+    I6,
+    I7,
 }
 
-impl IrqAddr {
-    fn irq_address(&self) -> u8 {
+impl From<u8> for IrqAddr {
+    fn from(c: u8) -> Self {
         use IrqAddr::*;
-        match *self {
-            I0 => 0x08,
-            I1 => 0x10,
-            I2 => 0x18,
-            I3 => 0x20,
+        match c {
+            0x00 => I0,
+            0x08 => I1,
+            0x10 => I2,
+            0x18 => I3,
+            0x20 => I4,
+            0x28 => I5,
+            0x30 => I6,
+            0x38 => I7,
+            _ => panic!("Invalid irq address opcode 0x{:02x}", c)
         }
     }
 }
 
+impl IrqAddr {
+    fn opcode(&self) -> u8 {
+        use IrqAddr::*;
+        match *self {
+            I0 => 0x00,
+            I1 => 0x08,
+            I2 => 0x10,
+            I3 => 0x18,
+            I4 => 0x20,
+            I5 => 0x28,
+            I6 => 0x30,
+            I7 => 0x38,
+        }
+    }
 
-use Reg::*;
+    fn irq_address(&self) -> u8 {
+        use IrqAddr::*;
+        match *self {
+            I0 => 0x00,
+            I1 => 0x08,
+            I2 => 0x10,
+            I3 => 0x18,
+            I4 => 0x20,
+            I5 => 0x28,
+            I6 => 0x30,
+            I7 => 0x38,
+        }
+    }
+}
+
+#[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
+enum CondFlag {
+    NZ,
+    Z,
+    NC,
+    C,
+    PO,
+    PE,
+    P,
+    M,
+}
+
+impl std::fmt::Display for CondFlag {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        use CondFlag::*;
+        write!(f, "{}", match *self {
+            NZ => "NZ",
+            Z => "Z",
+            NC => "NC",
+            C => "C",
+            PO => "PO",
+            PE => "PE",
+            P => "P",
+            M => "M"
+        })
+    }
+}
+
+impl From<u8> for CondFlag {
+    fn from(c: u8) -> Self {
+        use CondFlag::*;
+        match c {
+            0x00 => NZ,
+            0x08 => Z,
+            0x10 => NC,
+            0x18 => C,
+            0x20 => PO,
+            0x28 => PE,
+            0x30 => P,
+            0x38 => M,
+            c => panic!("Invalid opcode 0x{:02x}", c)
+        }
+    }
+}
+
+impl CondFlag {
+    fn opcode(self) -> u8 {
+        use CondFlag::*;
+        match self {
+            NZ => 0x00,
+            Z => 0x08,
+            NC => 0x10,
+            C => 0x18,
+            PO => 0x20,
+            PE => 0x28,
+            P => 0x30,
+            M => 0x38
+        }
+    }
+}
+
 use Opcode::*;
 
 #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
@@ -201,8 +312,8 @@ enum Opcode {
     Inr(Reg),
     Dcr(Reg),
     Jump(u16),
-    JumpZ(u16),
-    Cnz(u16),
+    J(CondFlag, u16),
+    C(CondFlag, u16),
     Sta(u16),
     Push(BytePair),
     Mvi(Reg, u8),
@@ -231,13 +342,14 @@ enum Opcode {
     Ora(Reg),
     Cmp(Reg),
     Hlt,
-    Rnz,
+    R(CondFlag),
     Pop(BytePair),
     Adi(u8),
     Sui(u8),
     Ani(u8),
     Ori(u8),
-    Rst(IrqAddr)
+    Rst(IrqAddr),
+    Ret,
 }
 
 struct CodeIterator<I: Iterator<Item=u8>> {
@@ -256,88 +368,63 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
     fn next_opcode(&mut self) -> Option<Opcode> {
         Some(match self.code_iterator.next()? {
             0x00 => Nop,
-            0x01 => Lxi(RegPair::BC, self.u16_data()?),
-            0x02 => Stax(RegPair::BC),
-            0x03 => Inx(RegPair::BC),
-            0x04 => Inr(B),
-            0x05 => Dcr(B),
-            0x06 => Mvi(B, self.u8_data()?),
+            v if (v & 0xcf) == 0x01 => Lxi((v & 0x30).into(), self.u16_data()?),
+            v if (v & 0xef) == 0x02 => Stax((v & 0x10).into()),
+            v if (v & 0xcf) == 0x03 => Inx((v & 0x30).into()),
+            v if (v & 0xc7) == 0x04 => Inr(((v & 0x38)>>3).into()),
+            v if (v & 0xc7) == 0x05 => Dcr(((v & 0x38)>>3).into()),
+            v if (v & 0xc7) == 0x06 => Mvi(((v & 0x38)>>3).into(), self.u8_data()?),
             0x07 => Rlc,
             0x09 => Dad(RegPair::BC),
             0x0a => Ldax(RegPair::BC),
             0x0b => Dcx(RegPair::BC),
-            0x0c => Inr(C),
-            0x0d => Dcr(C),
-            0x0e => Mvi(C, self.u8_data()?),
             0x0f => Rrc,
-            0x11 => Lxi(RegPair::DE, self.u16_data()?),
-            0x12 => Stax(RegPair::DE),
-            0x13 => Inx(RegPair::DE),
-            0x14 => Inr(D),
-            0x15 => Dcr(D),
-            0x16 => Mvi(D, self.u8_data()?),
             0x17 => Ral,
             0x19 => Dad(RegPair::DE),
             0x1a => Ldax(RegPair::DE),
             0x1b => Dcx(RegPair::DE),
-            0x1c => Inr(E),
-            0x1d => Dcr(E),
-            0x1e => Mvi(E, self.u8_data()?),
             0x1f => Rar,
             0x20 => Rim,
-            0x21 => Lxi(RegPair::HL, self.u16_data()?),
-            0x23 => Inx(RegPair::HL),
-            0x24 => Inr(H),
-            0x25 => Dcr(H),
-            0x26 => Mvi(H, self.u8_data()?),
             0x27 => Daa,
             0x29 => Dad(RegPair::HL),
             0x2a => Lhld(self.u16_data()?),
             0x2b => Dcx(RegPair::HL),
-            0x2c => Inr(L),
-            0x2d => Dcr(L),
-            0x2e => Mvi(L, self.u8_data()?),
             0x2f => Cma,
             0x30 => Sim,
-            0x31 => Lxi(RegPair::SP, self.u16_data()?),
             0x32 => Sta(self.u16_data()?),
-            0x33 => Inx(RegPair::SP),
-            0x34 => Inr(M),
-            0x35 => Dcr(M),
-            0x36 => Mvi(M, self.u8_data()?),
             0x37 => Stc,
             0x39 => Dad(RegPair::SP),
             0x3a => Lda(self.u16_data()?),
             0x3b => Dcx(RegPair::SP),
-            0x3c => Inr(A),
-            0x3d => Dcr(A),
-            0x3e => Mvi(A, self.u8_data()?),
+            0x3c => Inr(Reg::A),
             0x3f => Cmc,
             0x76 => Hlt,
-            v if v >= 0x40 && v <= 0x7f => Mov(((v-0x40)>>3).into(), (v & 0x07).into()),
-            v if v >= 0x80 && v <= 0x87 => Add((v-0x80).into()),
-            v if v >= 0x88 && v <= 0x8f => Adc((v-0x88).into()),
-            v if v >= 0x90 && v <= 0x97 => Sub((v-0x90).into()),
-            v if v >= 0x98 && v <= 0x9f => Sbb((v-0x98).into()),
-            v if v >= 0xa0 && v <= 0xa7 => Ana((v-0xa0).into()),
-            v if v >= 0xa8 && v <= 0xaf => Xra((v-0xa8).into()),
-            v if v >= 0xb0 && v <= 0xb7 => Ora((v-0xb0).into()),
-            v if v >= 0xb8 && v <= 0xbf => Cmp((v-0xb8).into()),
-            0xc0 => Rnz,
-            v if (v & 0xf0) >= 0xc0 && (v & 0x0f) == 0x1 => Pop((v & 0xf0).into()),
-            0xc2 => JumpZ(self.u16_data()?),
+            v if v >= 0x40 && v <= 0x7f => Mov(((v - 0x40) >> 3).into(), (v & 0x07).into()),
+            v if v >= 0x80 && v <= 0x87 => Add((v - 0x80).into()),
+            v if v >= 0x88 && v <= 0x8f => Adc((v - 0x88).into()),
+            v if v >= 0x90 && v <= 0x97 => Sub((v - 0x90).into()),
+            v if v >= 0x98 && v <= 0x9f => Sbb((v - 0x98).into()),
+            v if v >= 0xa0 && v <= 0xa7 => Ana((v - 0xa0).into()),
+            v if v >= 0xa8 && v <= 0xaf => Xra((v - 0xa8).into()),
+            v if v >= 0xb0 && v <= 0xb7 => Ora((v - 0xb0).into()),
+            v if v >= 0xb8 && v <= 0xbf => Cmp((v - 0xb8).into()),
+            v if (v & 0xc7) == 0xc0 => R((v & 0x38).into()),
+            v if (v & 0xcf) == 0xc1 => Pop((v & 0x30).into()),
+            v if (v & 0xc7) == 0xc2 => J((v & 0x38).into(), self.u16_data()?),
             0xc3 => Jump(self.u16_data()?),
-            0xc4 => Cnz(self.u16_data()?),
-            v if (v & 0xf0) >= 0xc0 && (v & 0x0f) == 0x5 => Push((v & 0xf0).into()),
+            v if (v & 0xc7) == 0xc4 => C((v & 0x38).into(), self.u16_data()?),
+            v if (v & 0xc7) == 0xc5 => Push((v & 0x30).into()),
             0xc6 => Adi(self.u8_data()?),
             0xc7 => Rst(IrqAddr::I0),
+            v if (v & 0xc7) == 0xc7 => Rst((v & 0x38).into()),
+            0xc9 => Ret,
             0xd6 => Sui(self.u8_data()?),
-            0xd7 => Rst(IrqAddr::I1),
             0xe6 => Ani(self.u8_data()?),
-            0xe7 => Rst(IrqAddr::I2),
             0xf6 => Ori(self.u8_data()?),
-            0xf7 => Rst(IrqAddr::I3),
-            c => {eprint!("Not implemented yet '{:02x}' opcode", c); Nop}
+            c => {
+                eprint!("Not implemented yet '{:02x}' opcode", c);
+                Nop
+            }
         }
         )
     }
@@ -351,7 +438,7 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
     }
 }
 
-impl<I: Iterator<Item=u8>> Iterator for CodeIterator<I>{
+impl<I: Iterator<Item=u8>> Iterator for CodeIterator<I> {
     type Item = Opcode;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -379,10 +466,10 @@ impl Opcode {
             Mvi(r, _) => 0x06 | r.opcode() << 3,
             Hlt => 0x76,
             Sta(_) => 0x32,
-            JumpZ(_) => 0xc2,
+            J(cf, _) => 0xc2 | cf.opcode(),
             Jump(_) => 0xc3,
-            Cnz(_) => 0xc4,
-            Push(bp) => 0x05 | bp.opcode(),
+            C(cf, _) => 0xc4 | cf.opcode(),
+            Push(bp) => 0xc5 | bp.opcode(),
             Adi(_) => 0xc6,
             Sui(_) => 0xd6,
             Ani(_) => 0xe6,
@@ -409,12 +496,10 @@ impl Opcode {
             Xra(r) => 0xa8 + r.opcode(),
             Ora(r) => 0xb0 + r.opcode(),
             Cmp(r) => 0xb8 + r.opcode(),
-            Rnz => 0xc0,
-            Pop(bp) => 0x01 | bp.opcode(),
-            Rst(IrqAddr::I0) => 0xc7,
-            Rst(IrqAddr::I1) => 0xd7,
-            Rst(IrqAddr::I2) => 0xe7,
-            Rst(IrqAddr::I3) => 0xf7,
+            R(cf) => 0xc0 | cf.opcode(),
+            Pop(bp) => 0xc1 | bp.opcode(),
+            Rst(irq) => 0xc7 | irq.opcode(),
+            Ret => 0xc9,
             Ldax(_) => panic!("Invalid syntax!"),
             Stax(_) => panic!("Invalid syntax!"),
         }
@@ -422,7 +507,7 @@ impl Opcode {
 
     fn length(&self) -> u16 {
         match *self {
-            Jump(_) | JumpZ(_) | Cnz(_) | Sta(_) |
+            Jump(_) | J(_, _) | C(_, _) | Sta(_) |
             Lda(_) | Lhld(_) | Lxi(_, _) => 3,
             Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) => 2,
             _ => 1
@@ -447,14 +532,14 @@ impl std::fmt::Display for Opcode {
             Lxi(rp, data) => write!(f, "LXI    {},#0x{:04x}", rp, data),
             Ldax(rp) => write!(f, "LDAX   {}", rp),
             Stax(rp) => write!(f, "STAX   {}", rp),
-            Inx(rp) => write!(f,  "INX    {}", rp),
-            Inr(r) => write!(f,  "INR    {}", r),
-            Dcr(r) => write!(f,  "DCR    {}", r),
+            Inx(rp) => write!(f, "INX    {}", rp),
+            Inr(r) => write!(f, "INR    {}", r),
+            Dcr(r) => write!(f, "DCR    {}", r),
             Mvi(reg, data) => write!(f, "MVI    {},#0x{:02x}", reg, data),
             Sta(offset) => write!(f, "STA    ${:04x}", offset),
-            JumpZ(offset) => write!(f, "JNZ    ${:04x}", offset),
+            J(cf, offset) => write!(f, "J{:2}    ${:04x}", cf.to_string(), offset),
             Jump(offset) => write!(f, "JMP    ${:04x}", offset),
-            Cnz(offset) => write!(f, "CNZ    ${:04x}", offset),
+            C(cf, offset) => write!(f, "C{:2}    ${:04x}", cf.to_string(), offset),
             Lda(addr) => write!(f, "LDA    ${:04x}", addr),
             Lhld(addr) => write!(f, "LHLD   ${:04x}", addr),
             Push(reg) => write!(f, "PUSH   {}", reg),
@@ -486,7 +571,8 @@ impl std::fmt::Display for Opcode {
             Ora(r) => write!(f, "ORA    {}", r),
             Cmp(r) => write!(f, "CMP    {}", r),
             Rst(i) => write!(f, "RST    ${:02x}", i.irq_address()),
-            Rnz => write!(f, "RNZ"),
+            R(cf) => write!(f, "R{}", cf),
+            Ret => write!(f, "RET"),
         }
     }
 }
@@ -535,7 +621,7 @@ mod test {
 
 
     #[rstest_parametrize(
-        bytes, code, length, desc,
+    bytes, code, length, desc,
         case("00", 0x00, 1, "NOP"),
         case("01 a4 32", 0x01, 3, "LXI    BC,#0x32a4"),
         case("02", 0x02, 1, "STAX   BC"),
@@ -729,19 +815,45 @@ mod test {
         case("c4 af de", 0xc4, 3, "CNZ    $deaf"),
         case("c5", 0xc5, 1, "PUSH   BC"),
         case("c6 02", 0xc6, 2, "ADI    #0x02"),
-        case("c7", 0xc7, 1, "RST    $08"),
+        case("c7", 0xc7, 1, "RST    $00"),
+        case("c8", 0xc8, 1, "RZ"),
+        case("c9", 0xc9, 1, "RET"),
+        case("ca 22 44", 0xca, 3, "JZ     $4422"),
+        case("cc ad 43", 0xcc, 3, "CZ     $43ad"),
+        case("cf", 0xcf, 1, "RST    $08"),
+        case("d0", 0xd0, 1, "RNC"),
         case("d1", 0xd1, 1, "POP    DE"),
+        case("d2 1a 32", 0xd2, 3, "JNC    $321a"),
+        case("d4 11 44", 0xd4, 3, "CNC    $4411"),
         case("d5", 0xd5, 1, "PUSH   DE"),
         case("d6 e3", 0xd6, 2, "SUI    #0xe3"),
         case("d7", 0xd7, 1, "RST    $10"),
+        case("d8", 0xd8, 1, "RC"),
+        case("da af 12", 0xda, 3, "JC     $12af"),
+        case("dc 12 14", 0xdc, 3, "CC     $1412"),
+        case("df", 0xdf, 1, "RST    $18"),
+        case("e0", 0xe0, 1, "RPO"),
         case("e1", 0xe1, 1, "POP    HL"),
+        case("e2 03 10", 0xe2, 3, "JPO    $1003"),
+        case("e4 12 24", 0xe4, 3, "CPO    $2412"),
         case("e5", 0xe5, 1, "PUSH   HL"),
         case("e6 32", 0xe6, 2, "ANI    #0x32"),
-        case("e7", 0xe7, 1, "RST    $18"),
+        case("e7", 0xe7, 1, "RST    $20"),
+        case("e8", 0xe8, 1, "RPE"),
+        case("ea de 08", 0xea, 3, "JPE    $08de"),
+        case("ec 22 14", 0xec, 3, "CPE    $1422"),
+        case("ef", 0xef, 1, "RST    $28"),
+        case("f0", 0xf0, 1, "RP"),
         case("f1", 0xf1, 1, "POP    PSW"),
+        case("f2 00 20", 0xf2, 3, "JP     $2000"),
+        case("f4 12 a4", 0xf4, 3, "CP     $a412"),
         case("f5", 0xf5, 1, "PUSH   PSW"),
         case("f6 a4", 0xf6, 2, "ORI    #0xa4"),
-        case("f7", 0xf7, 1, "RST    $20"),
+        case("f7", 0xf7, 1, "RST    $30"),
+        case("f8", 0xf8, 1, "RM"),
+        case("fa af f7", 0xfa, 3, "JM     $f7af"),
+        case("fc 02 e4", 0xfc, 3, "CM     $e402"),
+        case("ff", 0xff, 1, "RST    $38"),
     )
     ]
     fn opcode_parser(bytes: &str, code: u8, length: u16, desc: &str) {
