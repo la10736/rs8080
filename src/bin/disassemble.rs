@@ -350,6 +350,14 @@ enum Opcode {
     Ori(u8),
     Rst(IrqAddr),
     Ret,
+    In(u8),
+    Sbi(u8),
+    Pchl,
+    Xchg,
+    Di,
+    Sphl,
+    Ei,
+    Cpi(u8),
 }
 
 struct CodeIterator<I: Iterator<Item=u8>> {
@@ -413,8 +421,16 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             v if (v & 0xc7) == 0xc7 => Rst((v & 0x38).into()),
             0xc9 => Ret,
             0xd6 => Sui(self.u8_data()?),
+            0xdb => In(self.u8_data()?),
+            0xde => Sbi(self.u8_data()?),
             0xe6 => Ani(self.u8_data()?),
+            0xe9 => Pchl,
+            0xeb => Xchg,
+            0xf3 => Di,
             0xf6 => Ori(self.u8_data()?),
+            0xf9 => Sphl,
+            0xfb => Ei,
+            0xfe => Cpi(self.u8_data()?),
             c => {
                 eprint!("Not implemented yet '{:02x}' opcode", c);
                 Nop
@@ -494,6 +510,14 @@ impl Opcode {
             Pop(bp) => 0xc1 | bp.opcode(),
             Rst(irq) => 0xc7 | irq.opcode(),
             Ret => 0xc9,
+            In(_) => 0xdb,
+            Sbi(_) => 0xde,
+            Pchl => 0xe9,
+            Xchg => 0xeb,
+            Di => 0xf3,
+            Sphl => 0xf9,
+            Ei => 0xfb,
+            Cpi(_) => 0xfe,
             Ldax(_) => panic!("Invalid syntax!"),
             Stax(_) => panic!("Invalid syntax!"),
         }
@@ -503,7 +527,8 @@ impl Opcode {
         match *self {
             Jump(_) | J(_, _) | C(_, _) | Sta(_) |
             Lda(_) | Lhld(_) | Lxi(_, _) => 3,
-            Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) => 2,
+            Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) | In(_) |
+            Sbi(_) | Cpi(_) => 2,
             _ => 1
         }
     }
@@ -542,6 +567,9 @@ impl std::fmt::Display for Opcode {
             Sui(data) => write!(f, "SUI    #0x{:02x}", data),
             Ani(data) => write!(f, "ANI    #0x{:02x}", data),
             Ori(data) => write!(f, "ORI    #0x{:02x}", data),
+            In(data) => write!(f, "IN     #0x{:02x}", data),
+            Sbi(data) => write!(f, "SBI    #0x{:02x}", data),
+            Cpi(data) => write!(f, "CPI    #0x{:02x}", data),
             Rlc => write!(f, "RLC"),
             Rrc => write!(f, "RRC"),
             Ral => write!(f, "RAL"),
@@ -567,6 +595,11 @@ impl std::fmt::Display for Opcode {
             Rst(i) => write!(f, "RST    ${:02x}", i.irq_address()),
             R(cf) => write!(f, "R{}", cf),
             Ret => write!(f, "RET"),
+            Pchl => write!(f, "PCHL"),
+            Xchg => write!(f, "XCHG"),
+            Di => write!(f, "DI"),
+            Sphl => write!(f, "SPHL"),
+            Ei => write!(f, "EI"),
         }
     }
 }
@@ -612,7 +645,6 @@ mod test {
             .map(|v| u8::from_str_radix(v, 16).unwrap())
             .collect()
     }
-
 
     #[rstest_parametrize(
     bytes, code, length, desc,
@@ -824,7 +856,9 @@ mod test {
         case("d7", 0xd7, 1, "RST    $10"),
         case("d8", 0xd8, 1, "RC"),
         case("da af 12", 0xda, 3, "JC     $12af"),
+        case("db 0a", 0xdb, 2, "IN     #0x0a"),
         case("dc 12 14", 0xdc, 3, "CC     $1412"),
+        case("de 11", 0xde, 2, "SBI    #0x11"),
         case("df", 0xdf, 1, "RST    $18"),
         case("e0", 0xe0, 1, "RPO"),
         case("e1", 0xe1, 1, "POP    HL"),
@@ -834,19 +868,25 @@ mod test {
         case("e6 32", 0xe6, 2, "ANI    #0x32"),
         case("e7", 0xe7, 1, "RST    $20"),
         case("e8", 0xe8, 1, "RPE"),
+        case("e9", 0xe9, 1, "PCHL"),
         case("ea de 08", 0xea, 3, "JPE    $08de"),
+        case("eb", 0xeb, 1, "XCHG"),
         case("ec 22 14", 0xec, 3, "CPE    $1422"),
         case("ef", 0xef, 1, "RST    $28"),
         case("f0", 0xf0, 1, "RP"),
         case("f1", 0xf1, 1, "POP    PSW"),
         case("f2 00 20", 0xf2, 3, "JP     $2000"),
+        case("f3", 0xf3, 1, "DI"),
         case("f4 12 a4", 0xf4, 3, "CP     $a412"),
         case("f5", 0xf5, 1, "PUSH   PSW"),
         case("f6 a4", 0xf6, 2, "ORI    #0xa4"),
         case("f7", 0xf7, 1, "RST    $30"),
         case("f8", 0xf8, 1, "RM"),
+        case("f9", 0xf9, 1, "SPHL"),
         case("fa af f7", 0xfa, 3, "JM     $f7af"),
+        case("fb", 0xfb, 1, "EI"),
         case("fc 02 e4", 0xfc, 3, "CM     $e402"),
+        case("fe 4a", 0xfe, 2, "CPI    #0x4a"),
         case("ff", 0xff, 1, "RST    $38"),
     )
     ]
