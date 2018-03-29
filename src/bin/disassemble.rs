@@ -14,7 +14,7 @@ fn main() {
         .read_to_end(&mut code)
         .expect("Cannot read bytes data");
 
-    let disassembled = disassemble(code);
+    let disassembled = disassemble(code).unwrap();
 
     println!("{}", code_formatter(&disassembled))
 }
@@ -329,6 +329,7 @@ enum Opcode {
     Cma,
     Sim,
     Cmc,
+    Shld(u16),
     Lhld(u16),
     Stc,
     Lda(u16),
@@ -351,13 +352,16 @@ enum Opcode {
     Rst(IrqAddr),
     Ret,
     In(u8),
+    Out(u8),
     Sbi(u8),
     Pchl,
     Xchg,
+    Xthl,
     Di,
     Sphl,
     Ei,
     Cpi(u8),
+    Call(u16),
 }
 
 struct CodeIterator<I: Iterator<Item=u8>> {
@@ -373,8 +377,8 @@ impl CodeIterator<std::vec::IntoIter<u8>> {
 }
 
 impl<I: Iterator<Item=u8>> CodeIterator<I> {
-    fn next_opcode(&mut self) -> Option<Opcode> {
-        Some(match self.code_iterator.next()? {
+    fn next_opcode(&mut self) -> Option<Result<Opcode, OpcodeError>> {
+        Some(Ok(match self.code_iterator.next()? {
             0x00 => Nop,
             v if (v & 0xcf) == 0x01 => Lxi((v & 0x30).into(), self.u16_data()?),
             v if (v & 0xef) == 0x02 => Stax((v & 0x10).into()),
@@ -392,6 +396,7 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             0x1f => Rar,
             0x20 => Rim,
             0x27 => Daa,
+            0x22 => Shld(self.u16_data()?),
             0x2a => Lhld(self.u16_data()?),
             0x2f => Cma,
             0x30 => Sim,
@@ -415,14 +420,17 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             v if (v & 0xc7) == 0xc2 => J((v & 0x38).into(), self.u16_data()?),
             0xc3 => Jump(self.u16_data()?),
             v if (v & 0xc7) == 0xc4 => C((v & 0x38).into(), self.u16_data()?),
-            v if (v & 0xc7) == 0xc5 => Push((v & 0x30).into()),
+            v if (v & 0xcf) == 0xc5 => Push((v & 0x30).into()),
             0xc6 => Adi(self.u8_data()?),
             0xc7 => Rst(IrqAddr::I0),
             v if (v & 0xc7) == 0xc7 => Rst((v & 0x38).into()),
             0xc9 => Ret,
+            0xcd => Call(self.u16_data()?),
+            0xd3 => Out(self.u8_data()?),
             0xd6 => Sui(self.u8_data()?),
             0xdb => In(self.u8_data()?),
             0xde => Sbi(self.u8_data()?),
+            0xe3 => Xthl,
             0xe6 => Ani(self.u8_data()?),
             0xe9 => Pchl,
             0xeb => Xchg,
@@ -432,11 +440,10 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             0xfb => Ei,
             0xfe => Cpi(self.u8_data()?),
             c => {
-                eprint!("Not implemented yet '{:02x}' opcode", c);
-                Nop
+                return Some(Err(OpcodeError(format!("0x{:02x} Is not valid opcode!", c))))
             }
         }
-        )
+        ))
     }
 
     fn u16_data(&mut self) -> Option<u16> {
@@ -449,14 +456,17 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
 }
 
 impl<I: Iterator<Item=u8>> Iterator for CodeIterator<I> {
-    type Item = Opcode;
+    type Item = Result<Opcode, OpcodeError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_opcode()
     }
 }
 
-fn disassemble<C: AsRef<[u8]>>(codes: C) -> Vec<Opcode> {
+#[derive(Debug, Eq, PartialEq)]
+struct OpcodeError(String);
+
+fn disassemble<C: AsRef<[u8]>>(codes: C) -> Result<Vec<Opcode>, OpcodeError> {
     CodeIterator::new(
         codes.as_ref().iter().cloned().collect()
     ).collect()
@@ -494,6 +504,7 @@ impl Opcode {
             Sim => 0x30,
             Stc => 0x37,
             Cmc => 0x3f,
+            Shld(_) => 0x22,
             Lhld(_) => 0x2a,
             Lda(_) => 0x3a,
             Dad(rp) => 0x09 | rp.opcode(),
@@ -510,9 +521,12 @@ impl Opcode {
             Pop(bp) => 0xc1 | bp.opcode(),
             Rst(irq) => 0xc7 | irq.opcode(),
             Ret => 0xc9,
+            Call(_) => 0xcd,
             In(_) => 0xdb,
+            Out(_) => 0xd3,
             Sbi(_) => 0xde,
             Pchl => 0xe9,
+            Xthl => 0xe3,
             Xchg => 0xeb,
             Di => 0xf3,
             Sphl => 0xf9,
@@ -526,9 +540,9 @@ impl Opcode {
     fn length(&self) -> u16 {
         match *self {
             Jump(_) | J(_, _) | C(_, _) | Sta(_) |
-            Lda(_) | Lhld(_) | Lxi(_, _) => 3,
-            Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) | In(_) |
-            Sbi(_) | Cpi(_) => 2,
+            Lda(_) | Shld(_)  | Lhld(_) | Lxi(_, _) | Call(_) => 3,
+            Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) |
+            In(_) | Out(_) | Sbi(_) | Cpi(_) => 2,
             _ => 1
         }
     }
@@ -560,6 +574,7 @@ impl std::fmt::Display for Opcode {
             Jump(offset) => write!(f, "JMP    ${:04x}", offset),
             C(cf, offset) => write!(f, "C{:2}    ${:04x}", cf.to_string(), offset),
             Lda(addr) => write!(f, "LDA    ${:04x}", addr),
+            Shld(addr) => write!(f, "SHLD   ${:04x}", addr),
             Lhld(addr) => write!(f, "LHLD   ${:04x}", addr),
             Push(reg) => write!(f, "PUSH   {}", reg),
             Pop(reg) => write!(f, "POP    {}", reg),
@@ -568,8 +583,10 @@ impl std::fmt::Display for Opcode {
             Ani(data) => write!(f, "ANI    #0x{:02x}", data),
             Ori(data) => write!(f, "ORI    #0x{:02x}", data),
             In(data) => write!(f, "IN     #0x{:02x}", data),
+            Out(data) => write!(f, "OUT    #0x{:02x}", data),
             Sbi(data) => write!(f, "SBI    #0x{:02x}", data),
             Cpi(data) => write!(f, "CPI    #0x{:02x}", data),
+            Call(data) => write!(f, "CALL   ${:02x}", data),
             Rlc => write!(f, "RLC"),
             Rrc => write!(f, "RRC"),
             Ral => write!(f, "RAL"),
@@ -583,8 +600,8 @@ impl std::fmt::Display for Opcode {
             Hlt => write!(f, "HLT"),
             Dad(rp) => write!(f, "DAD    {}", rp),
             Dcx(rp) => write!(f, "DCX    {}", rp),
-            Mov(r0, r1) => write!(f, "MOV    {} <- {}", r0, r1),
             Add(r) => write!(f, "ADD    {}", r),
+            Mov(r0, r1) => write!(f, "MOV    {} <- {}", r0, r1),
             Adc(r) => write!(f, "ADC    {}", r),
             Sub(r) => write!(f, "SUB    {}", r),
             Sbb(r) => write!(f, "SBB    {}", r),
@@ -597,6 +614,7 @@ impl std::fmt::Display for Opcode {
             Ret => write!(f, "RET"),
             Pchl => write!(f, "PCHL"),
             Xchg => write!(f, "XCHG"),
+            Xthl => write!(f, "XTHL"),
             Di => write!(f, "DI"),
             Sphl => write!(f, "SPHL"),
             Ei => write!(f, "EI"),
@@ -620,12 +638,12 @@ fn code_formatter<C: AsRef<[Opcode]>>(code: C) -> String {
 fn should_read_some_nop() {
     let bytes = [0x00u8, 0x00u8, 0x00u8];
 
-    assert_eq!(vec![Nop, Nop, Nop], disassemble(&bytes));
+    assert_eq!(vec![Nop, Nop, Nop], disassemble(&bytes).unwrap());
 }
 
 #[test]
 fn should_dump_some_nop_codes() {
-    let code = disassemble(&[0x00u8, 0x00u8, 0x00u8]);
+    let code = disassemble(&[0x00u8, 0x00u8, 0x00u8]).unwrap();
 
     assert_eq!(r#"
    0000 00       NOP
@@ -679,6 +697,7 @@ mod test {
         case("1f", 0x1f, 1, "RAR"),
         case("20", 0x20, 1, "RIM"),
         case("21 af 1d", 0x21, 3, "LXI    HL,#0x1daf"),
+        case("22 12 33", 0x22, 3, "SHLD   $3312"),
         case("23", 0x23, 1, "INX    HL"),
         case("24", 0x24, 1, "INR    H"),
         case("25", 0x25, 1, "DCR    H"),
@@ -846,10 +865,12 @@ mod test {
         case("c9", 0xc9, 1, "RET"),
         case("ca 22 44", 0xca, 3, "JZ     $4422"),
         case("cc ad 43", 0xcc, 3, "CZ     $43ad"),
+        case("cd aa bb", 0xcd, 3, "CALL   $bbaa"),
         case("cf", 0xcf, 1, "RST    $08"),
         case("d0", 0xd0, 1, "RNC"),
         case("d1", 0xd1, 1, "POP    DE"),
         case("d2 1a 32", 0xd2, 3, "JNC    $321a"),
+        case("d3 41", 0xd3, 2, "OUT    #0x41"),
         case("d4 11 44", 0xd4, 3, "CNC    $4411"),
         case("d5", 0xd5, 1, "PUSH   DE"),
         case("d6 e3", 0xd6, 2, "SUI    #0xe3"),
@@ -863,6 +884,7 @@ mod test {
         case("e0", 0xe0, 1, "RPO"),
         case("e1", 0xe1, 1, "POP    HL"),
         case("e2 03 10", 0xe2, 3, "JPO    $1003"),
+        case("e3", 0xe3, 1, "XTHL"),
         case("e4 12 24", 0xe4, 3, "CPO    $2412"),
         case("e5", 0xe5, 1, "PUSH   HL"),
         case("e6 32", 0xe6, 2, "ANI    #0x32"),
@@ -893,10 +915,35 @@ mod test {
     fn opcode_parser(bytes: &str, code: u8, length: u16, desc: &str) {
         let bytes = parse_str_bytes(bytes);
 
-        let d = disassemble(&bytes)[0];
+        let d = disassemble(&bytes).unwrap()[0];
 
         assert_eq!(code, d.code());
         assert_eq!(length, d.length());
         assert_eq!(desc, &format!("{}", d));
     }
+
+    #[rstest_parametrize(opcode,
+        case(0x08),
+        case(0x10),
+        case(0x18),
+        case(0x28),
+        case(0x38),
+        case(0xcb),
+        case(0xd9),
+        case(0xdd),
+        case(0xed),
+        case(0xfd),
+    )
+    ]
+    fn opcode_that_doesnt_exists(opcode: u8) {
+        let codes = [opcode];
+
+        let d = disassemble(&codes);
+
+        assert!(d.is_err(), "But it is {:?}", d);
+        assert_eq!(OpcodeError(format!("0x{:02x} Is not valid opcode!", opcode)),
+                   d.unwrap_err())
+    }
+
+
 }

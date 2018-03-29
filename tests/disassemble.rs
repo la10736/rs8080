@@ -29,7 +29,10 @@ fn space_invaders_head() {
         .output().unwrap();
 
     let stdout = std::str::from_utf8(&out.stdout).unwrap().trim();
+    let _stderr = std::str::from_utf8(&out.stderr).unwrap().trim();
 
+    assert_eq!(0, out.status.code().unwrap());
     assert!(stdout.contains(expected), "\n{} \n NOT CONTAIN \n {}",
-            &stdout.to_string()[0..(expected.len() + 50)], expected )
+            &stdout.chars().take(expected.len() + 50).collect::<String>(),
+            expected )
 }
