@@ -1,6 +1,6 @@
-use super::{*, cpu::{
-    Opcode::*,
-    Opcode,
+use super::{*, asm::{
+    Instruction::*,
+    Instruction,
     Reg,
     RegPair,
     IrqAddr,
@@ -20,7 +20,7 @@ impl CodeIterator<std::vec::IntoIter<Word>> {
 }
 
 impl<I: Iterator<Item=Word>> CodeIterator<I> {
-    fn next_opcode(&mut self) -> Option<Result<Opcode, OpcodeError>> {
+    fn next_opcode(&mut self) -> Option<Result<Instruction, OpcodeError>> {
         Some(Ok(match self.code_iterator.next()? {
             0x00 => Nop,
             v if (v & 0xcf) == 0x01 => Lxi((v & 0x30).into(), self.u16_data()?),
@@ -99,7 +99,7 @@ impl<I: Iterator<Item=Word>> CodeIterator<I> {
 }
 
 impl<I: Iterator<Item=Word>> Iterator for CodeIterator<I> {
-    type Item = Result<Opcode, OpcodeError>;
+    type Item = Result<Instruction, OpcodeError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_opcode()
@@ -109,7 +109,7 @@ impl<I: Iterator<Item=Word>> Iterator for CodeIterator<I> {
 #[derive(Debug, Eq, PartialEq)]
 pub struct OpcodeError(String);
 
-pub fn disassemble<C: AsRef<[Word]>>(codes: C) -> Result<Vec<Opcode>, OpcodeError> {
+pub fn disassemble<C: AsRef<[Word]>>(codes: C) -> Result<Vec<Instruction>, OpcodeError> {
     CodeIterator::new(
         codes.as_ref().iter().cloned().collect()
     ).collect()
@@ -381,7 +381,7 @@ mod test {
 
         let d = disassemble(&bytes).unwrap()[0];
 
-        assert_eq!(code, d.code());
+        assert_eq!(code, d.opcode());
         assert_eq!(length, d.length());
         assert_eq!(desc, &format!("{}", d));
     }

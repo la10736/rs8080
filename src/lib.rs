@@ -11,7 +11,7 @@ pub trait ToOpcode {
 
 pub mod disassemble;
 
-pub mod cpu {
+pub mod asm {
     use {ToOpcode, Word, DWord, Address};
 
     #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
@@ -303,7 +303,7 @@ pub mod cpu {
     }
 
     #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
-    pub enum Opcode {
+    pub enum Instruction {
         Nop,
         Lxi(RegPair, DWord),
         Inx(RegPair),
@@ -363,9 +363,9 @@ pub mod cpu {
         Call(Address),
     }
 
-    impl Display for Opcode {
+    impl Display for Instruction {
         fn fmt(&self, f: &mut Formatter) -> Result {
-            use self::Opcode::*;
+            use self::Instruction::*;
             match *self {
                 Nop => write!(f, "NOP"),
                 Lxi(RegPair::SP, addr) => write!(f, "LXI    SP,${:04x}", addr),
@@ -429,9 +429,9 @@ pub mod cpu {
         }
     }
 
-    impl Opcode {
-        pub fn code(self) -> Word {
-            use self::Opcode::*;
+    impl ToOpcode for Instruction {
+        fn opcode(self) -> u8 {
+            use self::Instruction::*;
             match self {
                 Nop => 0x00,
                 Lxi(rp, _) => 0x01 | rp.opcode(),
@@ -494,9 +494,11 @@ pub mod cpu {
                 Stax(_) => panic!("Invalid syntax!"),
             }
         }
+    }
 
+    impl Instruction {
         pub fn length(&self) -> u16 {
-            use self::Opcode::*;
+            use self::Instruction::*;
             match *self {
                 Jump(_) | J(_, _) | C(_, _) | Sta(_) |
                 Lda(_) | Shld(_)  | Lhld(_) | Lxi(_, _) | Call(_) => 3,

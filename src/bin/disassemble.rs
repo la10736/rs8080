@@ -3,7 +3,8 @@ extern crate rs8080;
 
 use std::io::Read;
 use rs8080::{
-    cpu::{Opcode, Opcode::*},
+    ToOpcode,
+    asm::{Instruction, Instruction::*},
     disassemble::disassemble,
 };
 
@@ -22,16 +23,16 @@ fn main() {
     println!("{}", code_formatter(&disassembled))
 }
 
-fn code_str(op: &Opcode) -> String {
+fn code_str(op: &Instruction) -> String {
     match *op {
-        Jump(offset) => format!("{:02x} {:02x} {:02x}", op.code(), offset & 0xff, (offset >> 8) & 0xff),
-        Sta(offset) => format!("{:02x} {:02x} {:02x}", op.code(), offset & 0xff, (offset >> 8) & 0xff),
-        Mvi(_, data) => format!("{:02x} {:02x}", op.code(), data & 0xff),
-        c => format!("{:02x}", c.code())
+        Jump(offset) => format!("{:02x} {:02x} {:02x}", op.opcode(), offset & 0xff, (offset >> 8) & 0xff),
+        Sta(offset) => format!("{:02x} {:02x} {:02x}", op.opcode(), offset & 0xff, (offset >> 8) & 0xff),
+        Mvi(_, data) => format!("{:02x} {:02x}", op.opcode(), data & 0xff),
+        c => format!("{:02x}", c.opcode())
     }
 }
 
-fn code_formatter<C: AsRef<[Opcode]>>(code: C) -> String {
+fn code_formatter<C: AsRef<[Instruction]>>(code: C) -> String {
     let mut pos: u16 = 0;
     let mut output = String::new();
     for op in code.as_ref().iter() {
