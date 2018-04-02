@@ -34,5 +34,5 @@ fn space_invaders_head() {
     assert_eq!(0, out.status.code().unwrap());
     assert!(stdout.contains(expected), "\n{} \n NOT CONTAIN \n {}",
             &stdout.chars().take(expected.len() + 50).collect::<String>(),
-            expected )
+            expected)
 }

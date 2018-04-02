@@ -12,7 +12,7 @@ pub trait ToOpcode {
 pub mod disassemble;
 
 pub mod asm {
-    use {ToOpcode, Word, DWord, Address};
+    use {ToOpcode, Word, Address};
 
     #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
     pub enum Reg {
@@ -130,6 +130,58 @@ pub mod asm {
                        SP => "SP",
                    }
             )
+        }
+    }
+
+    #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
+    pub enum RegPairValue {
+        BC(Word, Word),
+        DE(Word, Word),
+        HL(Word, Word),
+        SP(Address),
+    }
+
+    impl Display for RegPairValue {
+        fn fmt(&self, f: &mut Formatter) -> Result {
+            use self::RegPairValue::*;
+            match *self {
+                BC(b, c) => write!(f, "BC,#0x{:02x}{:02x}", b, c),
+                DE(d, e) => write!(f, "DE,#0x{:02x}{:02x}", d, e),
+                HL(h, l) => write!(f, "HL,#0x{:02x}{:02x}", h, l),
+                SP(addr) => write!(f, "SP,${:04x}", addr),
+            }
+        }
+    }
+
+    impl Into<RegPair> for RegPairValue {
+        fn into(self) -> RegPair {
+            use self::RegPairValue::*;
+            match self {
+                BC(_, _) => RegPair::BC,
+                DE(_, _) => RegPair::DE,
+                HL(_, _) => RegPair::HL,
+                SP(_) => RegPair::SP,
+            }
+        }
+    }
+
+    impl From<[Word; 3]> for RegPairValue {
+        fn from(data: [Word; 3]) -> Self {
+            use self::RegPairValue::*;
+            match data[0] & 0x30 {
+                0x00 => BC(data[2], data[1]),
+                0x10 => DE(data[2], data[1]),
+                0x20 => HL(data[2], data[1]),
+                0x30 => SP(((data[2] as Address) << 8) | (data[1] as Address)),
+                _ => unreachable!("Should never be vaild {:02x}", data[0])
+            }
+        }
+    }
+
+    impl ToOpcode for RegPairValue {
+        fn opcode(self) -> Word {
+            let v: RegPair = self.into();
+            v.opcode()
         }
     }
 
@@ -305,7 +357,7 @@ pub mod asm {
     #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
     pub enum Instruction {
         Nop,
-        Lxi(RegPair, DWord),
+        Lxi(RegPairValue),
         Inx(RegPair),
         Stax(RegPair),
         Inr(Reg),
@@ -368,8 +420,7 @@ pub mod asm {
             use self::Instruction::*;
             match *self {
                 Nop => write!(f, "NOP"),
-                Lxi(RegPair::SP, addr) => write!(f, "LXI    SP,${:04x}", addr),
-                Lxi(rp, data) => write!(f, "LXI    {},#0x{:04x}", rp, data),
+                Lxi(rpv) => write!(f, "LXI    {}", rpv),
                 Ldax(rp) => write!(f, "LDAX   {}", rp),
                 Stax(rp) => write!(f, "STAX   {}", rp),
                 Inx(rp) => write!(f, "INX    {}", rp),
@@ -430,11 +481,11 @@ pub mod asm {
     }
 
     impl ToOpcode for Instruction {
-        fn opcode(self) -> u8 {
+        fn opcode(self) -> Word {
             use self::Instruction::*;
             match self {
                 Nop => 0x00,
-                Lxi(rp, _) => 0x01 | rp.opcode(),
+                Lxi(rpv) => 0x01 | rpv.opcode(),
                 Stax(rp) if rp.is_basic() => 0x02 | rp.opcode(),
                 Inx(rp) => 0x03 | rp.opcode(),
                 Ldax(rp) if rp.is_basic() => 0x0a | rp.opcode(),
@@ -501,11 +552,110 @@ pub mod asm {
             use self::Instruction::*;
             match *self {
                 Jump(_) | J(_, _) | C(_, _) | Sta(_) |
-                Lda(_) | Shld(_)  | Lhld(_) | Lxi(_, _) | Call(_) => 3,
+                Lda(_) | Shld(_) | Lhld(_) | Lxi(_) | Call(_) => 3,
                 Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) |
                 In(_) | Out(_) | Sbi(_) | Cpi(_) => 2,
                 _ => 1
             }
+        }
+    }
+}
+
+pub mod cpu {
+    use super::{
+        Word, Address,
+        asm::{Instruction, Instruction::*, RegPairValue},
+    };
+
+    #[derive(Default, Clone)]
+    struct State {
+        b: Word,
+        c: Word,
+        pc: Address,
+    }
+
+    #[derive(Default, Clone)]
+    pub struct Cpu {
+        state: State
+    }
+
+    impl Cpu {
+        pub fn exec(&mut self, instruction: Instruction) -> () {
+            match instruction {
+                Lxi(RegPairValue::BC(b, c)) => {
+                    self.state.b = b;
+                    self.state.c = c;
+                }
+                _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
+            }
+            self.state.pc += instruction.length();
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        #[derive(Default)]
+        struct StateBuilder {
+            proto: State
+        }
+
+        impl StateBuilder {
+            fn create(&self) -> State {
+                self.proto.clone()
+            }
+
+            fn b(mut self, val: Word) -> Self {
+                self.proto.b = val;
+                self
+            }
+
+            fn c(mut self, val: Word) -> Self {
+                self.proto.c = val;
+                self
+            }
+
+            fn pc(mut self, address: Address) -> Self {
+                self.proto.pc = address;
+                self
+            }
+        }
+
+        #[derive(Default)]
+        struct CpuBuilder {
+            proto: Cpu
+        }
+
+        impl CpuBuilder {
+            fn create(&self) -> Cpu {
+                self.proto.clone()
+            }
+
+            fn state(mut self, state: State) -> Self {
+                self.proto.state = state;
+                self
+            }
+        }
+
+        #[test]
+        fn lxi() {
+            let state = StateBuilder::default()
+                .b(0x10)
+                .c(0xa6)
+                .pc(0x3245)
+                .create();
+
+            let mut cpu = CpuBuilder::default()
+                .state(state)
+                .create();
+
+            cpu.exec(Lxi(RegPairValue::BC(0xae, 0x02)));
+
+            assert_eq!(cpu.state.b, 0xae);
+            assert_eq!(cpu.state.c, 0x02);
+
+            assert_eq!(cpu.state.pc, 0x3248);
         }
     }
 }
