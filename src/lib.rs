@@ -571,7 +571,12 @@ pub mod cpu {
     struct State {
         b: Word,
         c: Word,
+        d: Word,
+        e: Word,
+        h: Word,
+        l: Word,
         pc: Address,
+        sp: Address,
     }
 
     #[derive(Default, Clone)]
@@ -582,9 +587,25 @@ pub mod cpu {
     impl Cpu {
         pub fn exec(&mut self, instruction: Instruction) -> () {
             match instruction {
-                Lxi(RegPairValue::BC(b, c)) => {
-                    self.state.b = b;
-                    self.state.c = c;
+                Lxi(rp) => {
+                    use self::RegPairValue::*;
+                    match rp {
+                        BC(b, c) => {
+                            self.state.b = b;
+                            self.state.c = c;
+                        }
+                        DE(d, e) => {
+                            self.state.d = d;
+                            self.state.e = e;
+                        }
+                        HL(h, l) => {
+                            self.state.h = h;
+                            self.state.l = l;
+                        }
+                        SP(addr) => {
+                            self.state.sp = addr;
+                        }
+                    }
                 }
                 _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
             }
@@ -616,6 +637,31 @@ pub mod cpu {
                 self
             }
 
+            fn d(mut self, val: Word) -> Self {
+                self.proto.d = val;
+                self
+            }
+
+            fn e(mut self, val: Word) -> Self {
+                self.proto.e = val;
+                self
+            }
+
+            fn h(mut self, val: Word) -> Self {
+                self.proto.h = val;
+                self
+            }
+
+            fn l(mut self, val: Word) -> Self {
+                self.proto.l = val;
+                self
+            }
+
+            fn sp(mut self, addr: Address) -> Self {
+                self.proto.sp = addr;
+                self
+            }
+
             fn pc(mut self, address: Address) -> Self {
                 self.proto.pc = address;
                 self
@@ -638,24 +684,208 @@ pub mod cpu {
             }
         }
 
-        #[test]
-        fn lxi() {
-            let state = StateBuilder::default()
-                .b(0x10)
-                .c(0xa6)
-                .pc(0x3245)
-                .create();
+        use rstest::rstest_parametrize;
+
+        #[derive(Debug)]
+        enum WrapperStr<'a> {
+            Inner(&'a str),
+            Wrapper { name: &'a str, body: Box<WrapperStr<'a>> },
+        }
+
+        impl<'a> WrapperStr<'a> {
+            fn inner(self) -> &'a str {
+                match self {
+                    WrapperStr::Inner(inner) => inner,
+                    _ => panic!("Wrong state {:?}", self)
+                }
+            }
+        }
+
+        impl<'a> Into<WrapperStr<'a>> for &'a str {
+            fn into(self) -> WrapperStr<'a> {
+                let mut s = self.splitn(2, '(');
+                let cmd = s.next().unwrap();
+
+                match s.next() {
+                    None => WrapperStr::Inner(cmd),
+                    Some(b) => {
+                        let end = "".rfind(')').unwrap_or(b.len());
+                        WrapperStr::Wrapper {
+                            name: cmd,
+                            body:
+                            Box::new((&b[..end - 1]).into()),
+                        }
+                    }
+                }
+            }
+        }
+
+        fn u8_from_str(s: &str) -> u8 {
+            {
+                if s.len() <= 2 {
+                    s.parse()
+                } else {
+                    match &s[..2] {
+                        "0x" => u8::from_str_radix(&s[2..], 16),
+                        _ => s.parse(),
+                    }
+                }
+            }.unwrap()
+        }
+
+        fn u16_from_str(s: &str) -> u16 {
+            {
+                if s.len() <= 2 {
+                    s.parse()
+                } else {
+                    match &s[..2] {
+                        "0x" => u16::from_str_radix(&s[2..], 16),
+                        _ => s.parse(),
+                    }
+                }
+            }.unwrap()
+        }
+
+        fn u8x2_from_str<S: AsRef<str>>(s: S) -> (u8, u8) {
+            let mut splitter = s.as_ref().splitn(2, ',');
+            (u8_from_str(splitter.next().unwrap()), u8_from_str(splitter.next().unwrap()))
+        }
+
+        impl RegPairValue {
+            fn bc(inner: &str) -> Self {
+                let d = u8x2_from_str(inner);
+                RegPairValue::BC(d.0, d.1)
+            }
+            fn de(inner: &str) -> Self {
+                let d = u8x2_from_str(&inner);
+                RegPairValue::DE(d.0, d.1)
+            }
+            fn hl(inner: &str) -> Self {
+                let d = u8x2_from_str(&inner);
+                RegPairValue::HL(d.0, d.1)
+            }
+            fn sp(inner: &str) -> Self {
+                RegPairValue::SP(u16_from_str(&inner))
+            }
+        }
+
+        impl<'a> Into<RegPairValue> for Box<WrapperStr<'a>> {
+            fn into(self) -> RegPairValue {
+                use self::WrapperStr::*;
+                match *self {
+                    Wrapper { name, body } => {
+                        match name {
+                            "BC" => RegPairValue::bc(body.inner()),
+                            "DE" => RegPairValue::de(body.inner()),
+                            "HL" => RegPairValue::hl(body.inner()),
+                            "SP" => RegPairValue::sp(body.inner()),
+                            _ => panic!("RegPairValue {} not exists", name)
+                        }
+                    }
+                    _ => panic!("RegPairValue should be a Wrapper not {:?}", self)
+                }
+            }
+        }
+
+        impl<'a> Into<Instruction> for WrapperStr<'a> {
+            fn into(self) -> Instruction {
+                use self::WrapperStr::*;
+                match self {
+                    Wrapper { name: "Lxi", body } => Lxi(body.into()),
+                    _ => unimplemented!()
+                }
+            }
+        }
+
+        impl<'a> Into<Instruction> for &'a str {
+            fn into(self) -> Instruction {
+                let w: WrapperStr = self.into();
+                w.into()
+            }
+        }
+
+        #[rstest_parametrize(
+        ins, start, expected,
+        case("Lxi(BC(0xae,0x02))", 0x3245, 0x3248),
+        case("Lxi(DE(0xae,0x02))", 0x1234, 0x1237),
+        case("Lxi(HL(0xae,0x02))", 0x4321, 0x4324),
+        case("Lxi(SP(0xae02))", 0x1010, 0x1013),
+        )]
+        fn lxi_should_advance_pc(ins: &str, start: Address, expected: Address) {
+            let instruction = ins.into();
 
             let mut cpu = CpuBuilder::default()
-                .state(state)
+                .state(StateBuilder::default()
+                    .pc(start)
+                    .create()
+                )
+                .create();
+
+            cpu.exec(instruction);
+
+            assert_eq!(cpu.state.pc, expected);
+        }
+
+        #[test]
+        fn lxi_bc() {
+            let mut cpu = CpuBuilder::default()
+                .state(StateBuilder::default()
+                    .b(0x10)
+                    .c(0xa6)
+                    .create()
+                )
                 .create();
 
             cpu.exec(Lxi(RegPairValue::BC(0xae, 0x02)));
 
             assert_eq!(cpu.state.b, 0xae);
             assert_eq!(cpu.state.c, 0x02);
+        }
 
-            assert_eq!(cpu.state.pc, 0x3248);
+        #[test]
+        fn lxi_de() {
+            let mut cpu = CpuBuilder::default()
+                .state(StateBuilder::default()
+                    .d(0x10)
+                    .e(0xa6)
+                    .create()
+                )
+                .create();
+
+            cpu.exec(Lxi(RegPairValue::DE(0x02, 0xae)));
+
+            assert_eq!(cpu.state.d, 0x02);
+            assert_eq!(cpu.state.e, 0xae);
+        }
+
+        #[test]
+        fn lxi_hl() {
+            let mut cpu = CpuBuilder::default()
+                .state(StateBuilder::default()
+                    .h(0x22)
+                    .l(0xff)
+                    .create()
+                )
+                .create();
+
+            cpu.exec(Lxi(RegPairValue::HL(0x02, 0xae)));
+
+            assert_eq!(cpu.state.h, 0x02);
+            assert_eq!(cpu.state.l, 0xae);
+        }
+
+        #[test]
+        fn lxi_sp() {
+            let mut cpu = CpuBuilder::default()
+                .state(StateBuilder::default()
+                    .sp(0x1234)
+                    .create()
+                )
+                .create();
+
+            cpu.exec(Lxi(RegPairValue::SP(0x4321)));
+
+            assert_eq!(cpu.state.sp, 0x4321);
         }
     }
 }
