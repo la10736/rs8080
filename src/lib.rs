@@ -616,6 +616,7 @@ pub mod cpu {
     #[cfg(test)]
     mod test {
         use super::*;
+        use rstest::rstest;
 
         #[derive(Default)]
         struct StateBuilder {
@@ -826,63 +827,47 @@ pub mod cpu {
             assert_eq!(cpu.state.pc, expected);
         }
 
-        #[test]
-        fn lxi_bc() {
-            let mut cpu = CpuBuilder::default()
+        fn cpu() -> Cpu {
+            CpuBuilder::default()
                 .state(StateBuilder::default()
                     .b(0x10)
                     .c(0xa6)
+                    .d(0x10)
+                    .e(0xa6)
+                    .h(0x22)
+                    .l(0xff)
+                    .sp(0x1234)
                     .create()
                 )
-                .create();
+                .create()
+        }
 
+        #[rstest]
+        fn lxi_bc(mut cpu: Cpu) {
             cpu.exec(Lxi(RegPairValue::BC(0xae, 0x02)));
 
             assert_eq!(cpu.state.b, 0xae);
             assert_eq!(cpu.state.c, 0x02);
         }
 
-        #[test]
-        fn lxi_de() {
-            let mut cpu = CpuBuilder::default()
-                .state(StateBuilder::default()
-                    .d(0x10)
-                    .e(0xa6)
-                    .create()
-                )
-                .create();
-
+        #[rstest]
+        fn lxi_de(mut cpu: Cpu) {
             cpu.exec(Lxi(RegPairValue::DE(0x02, 0xae)));
 
             assert_eq!(cpu.state.d, 0x02);
             assert_eq!(cpu.state.e, 0xae);
         }
 
-        #[test]
-        fn lxi_hl() {
-            let mut cpu = CpuBuilder::default()
-                .state(StateBuilder::default()
-                    .h(0x22)
-                    .l(0xff)
-                    .create()
-                )
-                .create();
-
+        #[rstest]
+        fn lxi_hl(mut cpu: Cpu) {
             cpu.exec(Lxi(RegPairValue::HL(0x02, 0xae)));
 
             assert_eq!(cpu.state.h, 0x02);
             assert_eq!(cpu.state.l, 0xae);
         }
 
-        #[test]
-        fn lxi_sp() {
-            let mut cpu = CpuBuilder::default()
-                .state(StateBuilder::default()
-                    .sp(0x1234)
-                    .create()
-                )
-                .create();
-
+        #[rstest]
+        fn lxi_sp(mut cpu: Cpu) {
             cpu.exec(Lxi(RegPairValue::SP(0x4321)));
 
             assert_eq!(cpu.state.sp, 0x4321);
