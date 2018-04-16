@@ -866,11 +866,32 @@ pub mod cpu {
             assert_eq!(cpu.state.l, 0xae);
         }
 
-        #[rstest]
-        fn lxi_sp(mut cpu: Cpu) {
-            cpu.exec(Lxi(RegPairValue::SP(0x4321)));
+        trait CpuQuery {
+            type Result: PartialEq + Eq;
 
-            assert_eq!(cpu.state.sp, 0x4321);
+            fn ask(&self, cpu: &Cpu) -> Self::Result;
+        }
+
+        enum Reg {
+            SP
+        }
+
+        impl CpuQuery for Reg {
+            type Result = Address;
+
+            fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+                cpu.state.sp
+            }
+        }
+
+        #[rstest_parametrize(
+            action, query, expected,
+            case( Unwrap("Lxi(RegPairValue::SP(0x4321))"), Unwrap("Reg::SP"), 0x4321)
+        )]
+        fn lxi_sp<R: PartialEq + Eq + ::std::fmt::Debug, T: CpuQuery<Result=R>>(mut cpu: Cpu, action: Instruction, query: T, expected: R) {
+            cpu.exec(action);
+
+            assert_eq!(query.ask(&cpu), expected);
         }
     }
 }
