@@ -564,7 +564,7 @@ pub mod asm {
 pub mod cpu {
     use super::{
         Word, Address,
-        asm::{Instruction, Instruction::*, RegPairValue},
+        asm::{Instruction, Instruction::*, RegPair, RegPairValue},
     };
 
     #[derive(Default, Clone)]
@@ -605,6 +605,26 @@ pub mod cpu {
                         SP(addr) => {
                             self.state.sp = addr;
                         }
+                    }
+                },
+                Inx(rp) => {
+                    use self::RegPair::*;
+                    match rp {
+                        BC => {
+                            self.state.b += 1;
+                            self.state.c += 1;
+                        },
+                        DE => {
+                            self.state.d += 1;
+                            self.state.e += 1;
+                        },
+                        HL => {
+                            self.state.h += 1;
+                            self.state.l += 1;
+                        },
+                        SP => {
+                            self.state.sp += 1;
+                        },
                     }
                 }
                 _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
@@ -807,10 +827,10 @@ pub mod cpu {
 
         #[rstest_parametrize(
         ins, start, expected,
-        case("Lxi(BC(0xae,0x02))", 0x3245, 0x3248),
-        case("Lxi(DE(0xae,0x02))", 0x1234, 0x1237),
-        case("Lxi(HL(0xae,0x02))", 0x4321, 0x4324),
-        case("Lxi(SP(0xae02))", 0x1010, 0x1013),
+            case("Lxi(BC(0xae,0x02))", 0x3245, 0x3248),
+            case("Lxi(DE(0xae,0x02))", 0x1234, 0x1237),
+            case("Lxi(HL(0xae,0x02))", 0x4321, 0x4324),
+            case("Lxi(SP(0xae02))", 0x1010, 0x1013),
         )]
         fn lxi_should_advance_pc(ins: &str, start: Address, expected: Address) {
             let instruction = ins.into();
@@ -832,8 +852,8 @@ pub mod cpu {
                 .state(StateBuilder::default()
                     .b(0x10)
                     .c(0xa6)
-                    .d(0x10)
-                    .e(0xa6)
+                    .d(0x20)
+                    .e(0xe6)
                     .h(0x22)
                     .l(0xff)
                     .sp(0x1234)
@@ -850,33 +870,43 @@ pub mod cpu {
             assert_eq!(cpu.state.c, 0x02);
         }
 
-        #[rstest]
-        fn lxi_de(mut cpu: Cpu) {
-            cpu.exec(Lxi(RegPairValue::DE(0x02, 0xae)));
-
-            assert_eq!(cpu.state.d, 0x02);
-            assert_eq!(cpu.state.e, 0xae);
-        }
-
-        #[rstest]
-        fn lxi_hl(mut cpu: Cpu) {
-            cpu.exec(Lxi(RegPairValue::HL(0x02, 0xae)));
-
-            assert_eq!(cpu.state.h, 0x02);
-            assert_eq!(cpu.state.l, 0xae);
-        }
-
         trait CpuQuery {
             type Result: PartialEq + Eq;
 
             fn ask(&self, cpu: &Cpu) -> Self::Result;
         }
 
-        enum Reg {
-            SP
+        #[derive(PartialEq,Clone,Copy)]
+        enum WordReg {
+            B,
+            C,
+            D,
+            E,
+            H,
+            L
         }
 
-        impl CpuQuery for Reg {
+        struct SP;
+
+        trait QueryResult: PartialEq + Eq + Clone + Copy + ::std::fmt::Debug {}
+
+        impl CpuQuery for WordReg {
+            type Result = Word;
+
+            fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+                use self::WordReg::*;
+                match *self {
+                    B => cpu.state.b,
+                    C => cpu.state.c,
+                    D => cpu.state.d,
+                    E => cpu.state.e,
+                    H => cpu.state.h,
+                    L => cpu.state.l,
+                }
+            }
+        }
+
+        impl CpuQuery for SP {
             type Result = Address;
 
             fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
@@ -884,12 +914,49 @@ pub mod cpu {
             }
         }
 
+        impl QueryResult for Word {}
+        impl QueryResult for Address {}
+        impl<T0:QueryResult, T1:QueryResult> QueryResult for (T0, T1) {}
+
+        impl<T0:QueryResult, R0, T1:QueryResult, R1> CpuQuery for (R0, R1) where
+            R0: CpuQuery<Result=T0>,
+            R1: CpuQuery<Result=T1>,
+        {
+            type Result = (T0, T1);
+
+            fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+                match *self {
+                    (ref r0, ref r1) => (r0.ask(&cpu), r1.ask(&cpu))
+                }
+            }
+        }
+
         #[rstest_parametrize(
-            action, query, expected,
-            case( Unwrap("Lxi(RegPairValue::SP(0x4321))"), Unwrap("Reg::SP"), 0x4321)
+            rp, query, expected,
+            case( Unwrap("RegPairValue::BC(0xe4, 0xf1)"),
+                Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xe4, 0xf1)")),
+            case( Unwrap("RegPairValue::DE(0x20, 0xb1)"),
+                Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xb1)")),
+            case( Unwrap("RegPairValue::HL(0x02, 0xae)"),
+                Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x02, 0xae)")),
+            case( Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
         )]
-        fn lxi_sp<R: PartialEq + Eq + ::std::fmt::Debug, T: CpuQuery<Result=R>>(mut cpu: Cpu, action: Instruction, query: T, expected: R) {
-            cpu.exec(action);
+        fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
+            cpu.exec(Lxi(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
+        #[rstest_parametrize(
+            rp, query, expected,
+            case( Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x11, 0xa7)")),
+            case( Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x21, 0xe7)")),
+            case( Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0x00)")),
+            case( Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1235")),
+        )]
+        fn inx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
+
+            cpu.exec(Inx(rp));
 
             assert_eq!(query.ask(&cpu), expected);
         }
