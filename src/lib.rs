@@ -589,6 +589,14 @@ pub mod cpu {
         }
     }
 
+    impl ::std::ops::Sub<Word> for RegWord {
+        type Output = RegWord;
+
+        fn sub(self, rhs: Word) -> <Self as ::std::ops::Sub<Word>>::Output {
+            (self.0 - Wrapping(rhs)).into()
+        }
+    }
+
     impl PartialEq<Word> for RegWord {
         fn eq(&self, other: &Word) -> bool {
             self == &RegWord::from(*other)
@@ -624,6 +632,14 @@ pub mod cpu {
 
         fn add(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
             (self.0 + Wrapping(rhs)).into()
+        }
+    }
+
+    impl ::std::ops::Sub<Address> for RegAddress {
+        type Output = RegAddress;
+
+        fn sub(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
+            (self.0 - Wrapping(rhs)).into()
         }
     }
 
@@ -771,45 +787,80 @@ pub mod cpu {
     }
 
     impl Cpu {
+        fn lxi(&mut self, v: self::RegPairValue) {
+            use self::RegPairValue::*;
+            match v {
+                BC(b, c) => {
+                    self.state.set_bc((b, c));
+                }
+                DE(d, e) => {
+                    self.state.set_de((d, e));
+                }
+                HL(h, l) => {
+                    self.state.set_hl((h, l));
+                }
+                SP(addr) => {
+                    self.state.set_sp(addr);
+                }
+            }
+        }
+
+        fn inx(&mut self, rp: RegPair) -> () {
+            use self::RegPair::*;
+            match rp {
+                BC => {
+                    let v = self.state.bc() + 1;
+                    self.state.set_bc(v);
+                }
+                DE => {
+                    let v = self.state.de() + 1;
+                    self.state.set_de(v);
+                }
+                HL => {
+                    let v = self.state.hl() + 1;
+                    self.state.set_hl(v);
+                }
+                SP => {
+                    let v = self.state.sp + 1;
+                    self.state.set_sp(v);
+                }
+            }
+        }
+
+        fn dcx(&mut self, rp: RegPair) -> () {
+            use self::RegPair::*;
+            match rp {
+                BC => {
+                    let v = self.state.bc() - 1;
+                    self.state.set_bc(v);
+                }
+                DE => {
+                    let v = self.state.de() - 1;
+                    self.state.set_de(v);
+                }
+                HL => {
+                    let v = self.state.hl() - 1;
+                    self.state.set_hl(v);
+                }
+                SP => {
+                    let v = self.state.sp - 1;
+                    self.state.set_sp(v);
+                }
+            }
+        }
+    }
+
+    impl Cpu {
         pub fn exec(&mut self, instruction: Instruction) -> () {
             match instruction {
                 Lxi(rp) => {
-                    use self::RegPairValue::*;
-                    match rp {
-                        BC(b, c) => {
-                            self.state.set_bc((b, c));
-                        }
-                        DE(d, e) => {
-                            self.state.set_de((d, e));
-                        }
-                        HL(h, l) => {
-                            self.state.set_hl((h, l));
-                        }
-                        SP(addr) => {
-                            self.state.set_sp(addr);
-                        }
-                    }
+                    self.lxi(rp);
                 }
                 Inx(rp) => {
-                    use self::RegPair::*;
-                    match rp {
-                        BC => {
-                            let v = self.state.bc() + 1;
-                            self.state.set_bc(v);
-                        }
-                        DE => {
-                            let v = self.state.de() + 1;
-                            self.state.set_de(v);
-                        }
-                        HL => {
-                            let v = self.state.hl() + 1;
-                            self.state.set_hl(v);
-                        }
-                        SP => {
-                            let v = self.state.sp + 1;
-                            self.state.set_sp(v);
-                        }
-                    }
+                    self.inx(rp)
+                }
+                Dcx(rp) => {
+                    self.dcx(rp)
                 }
                 _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
             }
@@ -1192,5 +1243,39 @@ pub mod cpu {
 
             assert_eq!(query.ask(&cpu), expected);
         }
+
+        #[rstest_parametrize(
+        rp, query, expected,
+        case(Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x10, 0xa5)")),
+        case(Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xe5)")),
+        case(Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0xed)")),
+        case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1233")),
+        )]
+        fn dcx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
+            cpu.exec(Dcx(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
+        #[rstest_parametrize(
+        init, rp, query, expected,
+        case(Unwrap("RegPairValue::BC(0xff, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xfe, 0xff)")),
+        case(Unwrap("RegPairValue::BC(0x00, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::DE(0x12, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x11, 0xff)")),
+        case(Unwrap("RegPairValue::DE(0x00, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::HL(0xae, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xad, 0xff)")),
+        case(Unwrap("RegPairValue::HL(0x00, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::SP(0x0000)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0xffff),
+        )]
+        fn dcx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
+            where R: QueryResult, Q: CpuQuery<Result=R>
+        {
+            init.apply(&mut cpu.state);
+
+            cpu.exec(Dcx(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
     }
 }
