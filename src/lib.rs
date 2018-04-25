@@ -567,16 +567,202 @@ pub mod cpu {
         asm::{Instruction, Instruction::*, RegPair, RegPairValue},
     };
 
+    use std::num::Wrapping;
+
+    #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
+    struct RegWord(Wrapping<Word>);
+
+    #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
+    struct RegAddress(Wrapping<Address>);
+
+    impl ::std::ops::AddAssign<Word> for RegWord {
+        fn add_assign(&mut self, rhs: Word) {
+            self.0 += Wrapping(rhs);
+        }
+    }
+
+    impl ::std::ops::Add<Word> for RegWord {
+        type Output = RegWord;
+
+        fn add(self, rhs: Word) -> <Self as ::std::ops::Add<Word>>::Output {
+            (self.0 + Wrapping(rhs)).into()
+        }
+    }
+
+    impl PartialEq<Word> for RegWord {
+        fn eq(&self, other: &Word) -> bool {
+            self == &RegWord::from(*other)
+        }
+    }
+
+    impl From<Word> for RegWord {
+        fn from(v: Word) -> Self {
+            RegWord(Wrapping(v))
+        }
+    }
+
+    impl From<Wrapping<Word>> for RegWord {
+        fn from(v: Wrapping<Word>) -> Self {
+            RegWord(v)
+        }
+    }
+
+    impl Into<Word> for RegWord {
+        fn into(self) -> Word {
+            (self.0).0
+        }
+    }
+
+    impl ::std::ops::AddAssign<Address> for RegAddress {
+        fn add_assign(&mut self, rhs: Address) {
+            self.0 += Wrapping(rhs);
+        }
+    }
+
+    impl ::std::ops::Add<Address> for RegAddress {
+        type Output = RegAddress;
+
+        fn add(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
+            (self.0 + Wrapping(rhs)).into()
+        }
+    }
+
+    impl PartialEq<Address> for RegAddress {
+        fn eq(&self, other: &Address) -> bool {
+            self == &RegAddress::from(*other)
+        }
+    }
+
+    impl From<Address> for RegAddress {
+        fn from(v: Address) -> Self {
+            RegAddress(Wrapping(v))
+        }
+    }
+
+    impl From<(Word, Word)> for RegAddress {
+        fn from(v: (Word, Word)) -> Self {
+            let (h, l) = v;
+            RegAddress(Wrapping((h as Address) << 8 | (l as Address)))
+        }
+    }
+
+    impl From<(RegWord, RegWord)> for RegAddress {
+        fn from(v: (RegWord, RegWord)) -> Self {
+            let (h, l) = v;
+            ((h.0).0, (l.0).0).into()
+        }
+    }
+
+    const WORD_SIZE: u8 = 8;
+    const WORD_MASK: Address = 0xff;
+
+    impl From<RegAddress> for (RegWord, RegWord) {
+        fn from(v: RegAddress) -> Self {
+            let inner = (v.0).0;
+            ((((inner >> WORD_SIZE) & WORD_MASK) as Word).into(),
+             ((inner & WORD_MASK) as Word).into())
+        }
+    }
+
+    impl From<Wrapping<Address>> for RegAddress {
+        fn from(v: Wrapping<Address>) -> Self {
+            RegAddress(v)
+        }
+    }
+
+    impl Into<Address> for RegAddress {
+        fn into(self) -> Address {
+            (self.0).0
+        }
+    }
+
+    impl Into<(Word, Word)> for RegAddress {
+        fn into(self) -> (Word, Word) {
+            let a = (self.0).0;
+            ((a >> 8) as Word, (a & 0xff) as Word)
+        }
+    }
+
     #[derive(Default, Clone)]
     struct State {
-        b: Word,
-        c: Word,
-        d: Word,
-        e: Word,
-        h: Word,
-        l: Word,
-        pc: Address,
-        sp: Address,
+        b: RegWord,
+        c: RegWord,
+        d: RegWord,
+        e: RegWord,
+        h: RegWord,
+        l: RegWord,
+        pc: RegAddress,
+        sp: RegAddress,
+    }
+
+    impl State {
+        fn set_b(&mut self, v: Word) -> &mut Self {
+            self.b = v.into();
+            self
+        }
+
+        fn set_c(&mut self, v: Word) -> &mut Self {
+            self.c = v.into();
+            self
+        }
+        fn set_d(&mut self, v: Word) -> &mut Self {
+            self.d = v.into();
+            self
+        }
+
+        fn set_e(&mut self, v: Word) -> &mut Self {
+            self.e = v.into();
+            self
+        }
+        fn set_h(&mut self, v: Word) -> &mut Self {
+            self.h = v.into();
+            self
+        }
+
+        fn set_l(&mut self, v: Word) -> &mut Self {
+            self.l = v.into();
+            self
+        }
+
+        fn set_pc(&mut self, v: Address) -> &mut Self {
+            self.pc = v.into();
+            self
+        }
+
+        fn bc(&self) -> RegAddress {
+            (self.b, self.c).into()
+        }
+
+        fn set_bc<A: Into<RegAddress>>(&mut self, val: A) {
+            let (b, c) = val.into().into();
+            self.b = b;
+            self.c = c;
+        }
+
+        fn de(&self) -> RegAddress {
+            (self.d, self.e).into()
+        }
+
+        fn set_de<A: Into<RegAddress>>(&mut self, val: A) {
+            let (d, e) = val.into().into();
+            self.d = d;
+            self.e = e;
+        }
+
+        fn hl(&self) -> RegAddress {
+            (self.h, self.l).into()
+        }
+
+        fn set_hl<A: Into<RegAddress>>(&mut self, val: A) {
+            let (h, l) = val.into().into();
+            self.h = h;
+            self.l = l;
+        }
+
+        fn set_sp<A: Into<RegAddress>>(&mut self, v: A) -> &mut Self {
+            self.sp = v.into();
+            self
+        }
     }
 
     #[derive(Default, Clone)]
@@ -591,40 +777,38 @@ pub mod cpu {
                     use self::RegPairValue::*;
                     match rp {
                         BC(b, c) => {
-                            self.state.b = b;
-                            self.state.c = c;
+                            self.state.set_bc((b, c));
                         }
                         DE(d, e) => {
-                            self.state.d = d;
-                            self.state.e = e;
+                            self.state.set_de((d, e));
                         }
                         HL(h, l) => {
-                            self.state.h = h;
-                            self.state.l = l;
+                            self.state.set_hl((h, l));
                         }
                         SP(addr) => {
-                            self.state.sp = addr;
+                            self.state.set_sp(addr);
                         }
                     }
-                },
+                }
                 Inx(rp) => {
                     use self::RegPair::*;
                     match rp {
                         BC => {
-                            self.state.b += 1;
-                            self.state.c += 1;
-                        },
+                            let v = self.state.bc() + 1;
+                            self.state.set_bc(v);
+                        }
                         DE => {
-                            self.state.d += 1;
-                            self.state.e += 1;
-                        },
+                            let v = self.state.de() + 1;
+                            self.state.set_de(v);
+                        }
                         HL => {
-                            self.state.h += 1;
-                            self.state.l += 1;
-                        },
+                            let v = self.state.hl() + 1;
+                            self.state.set_hl(v);
+                        }
                         SP => {
-                            self.state.sp += 1;
-                        },
+                            let v = self.state.sp + 1;
+                            self.state.set_sp(v);
+                        }
                     }
                 }
                 _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
@@ -649,42 +833,42 @@ pub mod cpu {
             }
 
             fn b(mut self, val: Word) -> Self {
-                self.proto.b = val;
+                self.proto.set_b(val);
                 self
             }
 
             fn c(mut self, val: Word) -> Self {
-                self.proto.c = val;
+                self.proto.set_c(val);
                 self
             }
 
             fn d(mut self, val: Word) -> Self {
-                self.proto.d = val;
+                self.proto.set_d(val);
                 self
             }
 
             fn e(mut self, val: Word) -> Self {
-                self.proto.e = val;
+                self.proto.set_e(val);
                 self
             }
 
             fn h(mut self, val: Word) -> Self {
-                self.proto.h = val;
+                self.proto.set_h(val);
                 self
             }
 
             fn l(mut self, val: Word) -> Self {
-                self.proto.l = val;
+                self.proto.set_l(val);
                 self
             }
 
             fn sp(mut self, addr: Address) -> Self {
-                self.proto.sp = addr;
+                self.proto.set_sp(addr);
                 self
             }
 
             fn pc(mut self, address: Address) -> Self {
-                self.proto.pc = address;
+                self.proto.set_pc(address);
                 self
             }
         }
@@ -827,10 +1011,10 @@ pub mod cpu {
 
         #[rstest_parametrize(
         ins, start, expected,
-            case("Lxi(BC(0xae,0x02))", 0x3245, 0x3248),
-            case("Lxi(DE(0xae,0x02))", 0x1234, 0x1237),
-            case("Lxi(HL(0xae,0x02))", 0x4321, 0x4324),
-            case("Lxi(SP(0xae02))", 0x1010, 0x1013),
+        case("Lxi(BC(0xae,0x02))", 0x3245, 0x3248),
+        case("Lxi(DE(0xae,0x02))", 0x1234, 0x1237),
+        case("Lxi(HL(0xae,0x02))", 0x4321, 0x4324),
+        case("Lxi(SP(0xae02))", 0x1010, 0x1013),
         )]
         fn lxi_should_advance_pc(ins: &str, start: Address, expected: Address) {
             let instruction = ins.into();
@@ -855,7 +1039,7 @@ pub mod cpu {
                     .d(0x20)
                     .e(0xe6)
                     .h(0x22)
-                    .l(0xff)
+                    .l(0xee)
                     .sp(0x1234)
                     .create()
                 )
@@ -876,14 +1060,14 @@ pub mod cpu {
             fn ask(&self, cpu: &Cpu) -> Self::Result;
         }
 
-        #[derive(PartialEq,Clone,Copy)]
+        #[derive(PartialEq, Clone, Copy)]
         enum WordReg {
             B,
             C,
             D,
             E,
             H,
-            L
+            L,
         }
 
         struct SP;
@@ -902,7 +1086,7 @@ pub mod cpu {
                     E => cpu.state.e,
                     H => cpu.state.h,
                     L => cpu.state.l,
-                }
+                }.into()
             }
         }
 
@@ -910,15 +1094,17 @@ pub mod cpu {
             type Result = Address;
 
             fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
-                cpu.state.sp
+                cpu.state.sp.into()
             }
         }
 
         impl QueryResult for Word {}
-        impl QueryResult for Address {}
-        impl<T0:QueryResult, T1:QueryResult> QueryResult for (T0, T1) {}
 
-        impl<T0:QueryResult, R0, T1:QueryResult, R1> CpuQuery for (R0, R1) where
+        impl QueryResult for Address {}
+
+        impl<T0: QueryResult, T1: QueryResult> QueryResult for (T0, T1) {}
+
+        impl<T0: QueryResult, R0, T1: QueryResult, R1> CpuQuery for (R0, R1) where
             R0: CpuQuery<Result=T0>,
             R1: CpuQuery<Result=T1>,
         {
@@ -932,14 +1118,14 @@ pub mod cpu {
         }
 
         #[rstest_parametrize(
-            rp, query, expected,
-            case( Unwrap("RegPairValue::BC(0xe4, 0xf1)"),
-                Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xe4, 0xf1)")),
-            case( Unwrap("RegPairValue::DE(0x20, 0xb1)"),
-                Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xb1)")),
-            case( Unwrap("RegPairValue::HL(0x02, 0xae)"),
-                Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x02, 0xae)")),
-            case( Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
+        rp, query, expected,
+        case(Unwrap("RegPairValue::BC(0xe4, 0xf1)"),
+        Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xe4, 0xf1)")),
+        case(Unwrap("RegPairValue::DE(0x20, 0xb1)"),
+        Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xb1)")),
+        case(Unwrap("RegPairValue::HL(0x02, 0xae)"),
+        Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x02, 0xae)")),
+        case(Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
         )]
         fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
             cpu.exec(Lxi(rp));
@@ -948,13 +1134,59 @@ pub mod cpu {
         }
 
         #[rstest_parametrize(
-            rp, query, expected,
-            case( Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x11, 0xa7)")),
-            case( Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x21, 0xe7)")),
-            case( Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0x00)")),
-            case( Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1235")),
+        rp, query, expected,
+        case(Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x10, 0xa7)")),
+        case(Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xe7)")),
+        case(Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0xef)")),
+        case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1235")),
         )]
         fn inx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
+            cpu.exec(Inx(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
+        trait ApplyState {
+            fn apply(self, state: &mut State);
+        }
+
+        impl ApplyState for RegPairValue {
+            fn apply(self, state: &mut State) {
+                use self::RegPairValue::*;
+                match self {
+                    BC(b, c) => {
+                        state.set_b(b);
+                        state.set_c(c);
+                    }
+                    DE(d, e) => {
+                        state.set_d(d);
+                        state.set_e(e);
+                    }
+                    HL(h, l) => {
+                        state.set_h(h);
+                        state.set_l(l);
+                    }
+                    SP(sp) => {
+                        state.set_sp(sp);
+                    }
+                }
+            }
+        }
+
+        #[rstest_parametrize(
+        init, rp, query, expected,
+        case(Unwrap("RegPairValue::BC(0x00, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x01, 0x00)")),
+        case(Unwrap("RegPairValue::BC(0xff, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::DE(0x12, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x13, 0x00)")),
+        case(Unwrap("RegPairValue::DE(0xff, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::HL(0xae, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xaf, 0x00)")),
+        case(Unwrap("RegPairValue::HL(0xff, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::SP(0xffff)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0x0000),
+        )]
+        fn inx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
+            where R: QueryResult, Q: CpuQuery<Result=R>
+        {
+            init.apply(&mut cpu.state);
 
             cpu.exec(Inx(rp));
 
