@@ -3,23 +3,22 @@ use super::{
     asm::{Instruction, Instruction::*, Reg, RegPair, RegPairValue},
 };
 
-use std::num::Wrapping;
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
+struct RegWord(Word);
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
-struct RegWord(Wrapping<Word>);
-
-#[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
-struct RegAddress(Wrapping<Address>);
+struct RegAddress(Address);
 
 impl RegWord {
     fn increment(&mut self) {
-        self.0 += Wrapping(1);
+        *self += 1;
     }
 }
 
 impl ::std::ops::AddAssign<Word> for RegWord {
     fn add_assign(&mut self, rhs: Word) {
-        self.0 += Wrapping(rhs);
+        let (a, _b) = self.0.overflowing_add(rhs);
+        self.0 = a;
     }
 }
 
@@ -27,7 +26,8 @@ impl ::std::ops::Add<Word> for RegWord {
     type Output = RegWord;
 
     fn add(self, rhs: Word) -> <Self as ::std::ops::Add<Word>>::Output {
-        (self.0 + Wrapping(rhs)).into()
+        let (a, _b) = self.0.overflowing_add(rhs);
+        RegWord(a)
     }
 }
 
@@ -35,7 +35,8 @@ impl ::std::ops::Sub<Word> for RegWord {
     type Output = RegWord;
 
     fn sub(self, rhs: Word) -> <Self as ::std::ops::Sub<Word>>::Output {
-        (self.0 - Wrapping(rhs)).into()
+        let (a, _b) = self.0.overflowing_sub(rhs);
+        RegWord(a)
     }
 }
 
@@ -47,25 +48,19 @@ impl PartialEq<Word> for RegWord {
 
 impl From<Word> for RegWord {
     fn from(v: Word) -> Self {
-        RegWord(Wrapping(v))
-    }
-}
-
-impl From<Wrapping<Word>> for RegWord {
-    fn from(v: Wrapping<Word>) -> Self {
         RegWord(v)
     }
 }
 
 impl Into<Word> for RegWord {
     fn into(self) -> Word {
-        (self.0).0
+        self.0
     }
 }
 
 impl ::std::ops::AddAssign<Address> for RegAddress {
     fn add_assign(&mut self, rhs: Address) {
-        self.0 += Wrapping(rhs);
+        self.0 += rhs;
     }
 }
 
@@ -73,7 +68,8 @@ impl ::std::ops::Add<Address> for RegAddress {
     type Output = RegAddress;
 
     fn add(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
-        (self.0 + Wrapping(rhs)).into()
+        let (a, _b) = self.0.overflowing_add(rhs);
+        RegAddress(a)
     }
 }
 
@@ -81,7 +77,8 @@ impl ::std::ops::Sub<Address> for RegAddress {
     type Output = RegAddress;
 
     fn sub(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
-        (self.0 - Wrapping(rhs)).into()
+        let (a, _b) = self.0.overflowing_sub(rhs);
+        RegAddress(a)
     }
 }
 
@@ -93,21 +90,27 @@ impl PartialEq<Address> for RegAddress {
 
 impl From<Address> for RegAddress {
     fn from(v: Address) -> Self {
-        RegAddress(Wrapping(v))
+        RegAddress(v)
     }
 }
 
 impl From<(Word, Word)> for RegAddress {
     fn from(v: (Word, Word)) -> Self {
         let (h, l) = v;
-        RegAddress(Wrapping((h as Address) << 8 | (l as Address)))
+        RegAddress((h as Address) << 8 | (l as Address))
     }
 }
 
 impl From<(RegWord, RegWord)> for RegAddress {
     fn from(v: (RegWord, RegWord)) -> Self {
         let (h, l) = v;
-        ((h.0).0, (l.0).0).into()
+        (h.0, l.0).into()
+    }
+}
+
+impl Into<Address> for RegAddress {
+    fn into(self) -> Address {
+        self.0
     }
 }
 
@@ -116,27 +119,15 @@ const WORD_MASK: Address = 0xff;
 
 impl From<RegAddress> for (RegWord, RegWord) {
     fn from(v: RegAddress) -> Self {
-        let inner = (v.0).0;
+        let inner = v.0;
         ((((inner >> WORD_SIZE) & WORD_MASK) as Word).into(),
          ((inner & WORD_MASK) as Word).into())
     }
 }
 
-impl From<Wrapping<Address>> for RegAddress {
-    fn from(v: Wrapping<Address>) -> Self {
-        RegAddress(v)
-    }
-}
-
-impl Into<Address> for RegAddress {
-    fn into(self) -> Address {
-        (self.0).0
-    }
-}
-
 impl Into<(Word, Word)> for RegAddress {
     fn into(self) -> (Word, Word) {
-        let a = (self.0).0;
+        let a = self.0;
         ((a >> 8) as Word, (a & 0xff) as Word)
     }
 }
