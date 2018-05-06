@@ -12,7 +12,7 @@ struct RegAddress(Address);
 impl RegWord {
     fn increment(&mut self) { *self += 1; }
     fn decrement(&mut self) { *self -= 1; }
-    fn one_complement(&mut self) { *self = (0xff ^ self.0).into()}
+    fn one_complement(&mut self) { *self = (0xff ^ self.0).into() }
     fn is_zero(&self) -> bool { self.0 == 0 }
     fn sign_bit(&self) -> bool { (self.0 & 0x80) != 0x00 }
     fn parity(&self) -> bool { (self.0.count_ones() % 2) == 0 }
@@ -142,7 +142,7 @@ impl Into<(Word, Word)> for RegAddress {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Eq, PartialEq, Debug)]
 struct State {
     a: RegWord,
     b: RegWord,
@@ -362,6 +362,7 @@ impl Cpu {
 impl Cpu {
     pub fn exec(&mut self, instruction: Instruction) -> () {
         match instruction {
+            Nop => {}
             Lxi(rp) => {
                 self.lxi(rp);
             }
@@ -526,7 +527,9 @@ mod test {
     impl QueryResult for Word {}
 
     impl QueryResult for Address {}
+
     impl QueryResult for bool {}
+
     impl<T0: QueryResult, T1: QueryResult> QueryResult for (T0, T1) {}
 
     impl<T0: QueryResult, R0, T1: QueryResult, R1> CpuQuery for (R0, R1) where
@@ -952,5 +955,18 @@ mod test {
         cpu.exec(Cma);
 
         assert!(cpu.state.zero)
+    }
+
+    #[rstest]
+    fn nop_should_just_change_pc(mut cpu: Cpu) {
+        let mut state = cpu.state.clone();
+
+        cpu.exec(Nop);
+
+        assert_eq!(state.pc + 1, cpu.state.pc);
+
+        state.pc += 1;
+
+        assert_eq!(state, cpu.state);
     }
 }
