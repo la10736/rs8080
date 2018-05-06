@@ -10,14 +10,23 @@ struct RegWord(Word);
 struct RegAddress(Address);
 
 impl RegWord {
-    fn increment(&mut self) {
-        *self += 1;
-    }
+    fn increment(&mut self) { *self += 1; }
+    fn decrement(&mut self) { *self -= 1; }
+    fn is_zero(&self) -> bool { self.0 == 0 }
+    fn sign_bit(&self) -> bool { (self.0 & 0x80) != 0x00 }
+    fn parity(&self) -> bool { (self.0.count_ones() % 2) == 0 }
 }
 
 impl ::std::ops::AddAssign<Word> for RegWord {
     fn add_assign(&mut self, rhs: Word) {
         let (a, _b) = self.0.overflowing_add(rhs);
+        self.0 = a;
+    }
+}
+
+impl ::std::ops::SubAssign<Word> for RegWord {
+    fn sub_assign(&mut self, rhs: u8) {
+        let (a, _b) = self.0.overflowing_sub(rhs);
         self.0 = a;
     }
 }
@@ -42,7 +51,7 @@ impl ::std::ops::Sub<Word> for RegWord {
 
 impl PartialEq<Word> for RegWord {
     fn eq(&self, other: &Word) -> bool {
-        self == &RegWord::from(*other)
+        self.0 == *other
     }
 }
 
@@ -143,6 +152,11 @@ struct State {
     l: RegWord,
     pc: RegAddress,
     sp: RegAddress,
+
+    zero: bool,
+    sign: bool,
+    parity: bool,
+    carry: bool,
 }
 
 impl State {
@@ -185,7 +199,7 @@ impl State {
 #[derive(Default, Clone)]
 pub struct Cpu {
     state: State,
-    m: RegWord
+    m: RegWord,
 }
 
 /// Utilities
@@ -193,14 +207,28 @@ impl Cpu {
     fn mut_reg(&mut self, r: self::Reg) -> &mut RegWord {
         use self::Reg::*;
         match r {
-            A => &mut self.state.a ,
-            B => &mut self.state.b ,
-            C => &mut self.state.c ,
-            D => &mut self.state.d ,
-            E => &mut self.state.e ,
-            H => &mut self.state.h ,
-            L => &mut self.state.l ,
-            M => &mut self.m ,
+            A => &mut self.state.a,
+            B => &mut self.state.b,
+            C => &mut self.state.c,
+            D => &mut self.state.d,
+            E => &mut self.state.e,
+            H => &mut self.state.h,
+            L => &mut self.state.l,
+            M => &mut self.m,
+        }
+    }
+
+    fn reg(&mut self, r: self::Reg) -> &RegWord {
+        use self::Reg::*;
+        match r {
+            A => &self.state.a,
+            B => &self.state.b,
+            C => &self.state.c,
+            D => &self.state.d,
+            E => &self.state.e,
+            H => &self.state.h,
+            L => &self.state.l,
+            M => &self.m,
         }
     }
 
@@ -263,13 +291,24 @@ impl Cpu {
 /// Single Register Instructions
 impl Cpu {
     fn inr(&mut self, r: self::Reg) {
-        self.mut_reg(r).increment()
+        self.mut_reg(r).increment();
+        self.fix_static_flags(r);
+    }
+
+    fn dcr(&mut self, r: self::Reg) {
+        self.mut_reg(r).decrement();
+        self.fix_static_flags(r);
+    }
+
+    fn fix_static_flags(&mut self, r: Reg) {
+        self.state.zero = self.reg(r).is_zero();
+        self.state.sign = self.reg(r).sign_bit();
+        self.state.parity = self.reg(r).parity();
     }
 }
 
 /// Register Pair Instructions
 impl Cpu {
-
     fn inx(&mut self, rp: RegPair) -> () {
         use self::RegPair::*;
         match rp {
@@ -329,6 +368,9 @@ impl Cpu {
             }
             Inr(r) => {
                 self.inr(r)
+            }
+            Dcr(r) => {
+                self.dcr(r)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -502,8 +544,8 @@ mod test {
     }
 
     impl QueryResult for Word {}
-
     impl QueryResult for Address {}
+    impl QueryResult for bool {}
 
     impl<T0: QueryResult, T1: QueryResult> QueryResult for (T0, T1) {}
 
@@ -627,6 +669,7 @@ mod test {
         assert_eq!(query.ask(&cpu), expected);
     }
 
+    #[derive(Copy, Clone)]
     enum RegValue {
         A(Word),
         B(Word),
@@ -654,6 +697,26 @@ mod test {
         }
     }
 
+    #[derive(Copy, Clone)]
+    enum StateFlag {
+        Zero,
+        Sign,
+        Parity,
+    }
+
+    impl CpuQuery for StateFlag {
+        type Result = bool;
+
+        fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+            use self::StateFlag::*;
+            match *self {
+                Zero => cpu.state.zero,
+                Sign => cpu.state.sign,
+                Parity => cpu.state.parity,
+            }
+        }
+    }
+
     #[rstest_parametrize(
     init, reg, query, expected,
     case(Unwrap("RegValue::A(0x33)"), Unwrap("Reg::A"), Unwrap("WordReg::A"), 0x34),
@@ -675,11 +738,182 @@ mod test {
         assert_eq!(query.ask(&cpu), expected);
     }
 
-    // TODO:
-    // -[ ] Rimuovere il man in the middle del Wrapper (implementare nel registro)
-    // -[ ] Implementare lo stato dei flag e metodi che tornano lo stato cambiato (enum None, Set, Clear)
-    // -[ ] Test che controllano lo stato : basta lavorare su un registro
-    // -[ ] Struttura Registro generica per 8 o 16 bit
-    // -[ ] Registro che mappa la coppia di registri ? (non sono sicuro che sia fattibile)
+    #[rstest]
+    fn inr_should_set_flags(mut cpu: Cpu)
+    {
+        cpu.state.set_b(0xfd);
 
+        cpu.inr(Reg::B);
+
+        //0xfe
+        assert!(!cpu.state.zero);
+        assert!(cpu.state.sign);
+        assert!(!cpu.state.parity);
+
+        cpu.inr(Reg::B);
+
+        //0xff
+        assert!(!cpu.state.zero);
+        assert!(cpu.state.sign);
+        assert!(cpu.state.parity);
+
+        cpu.inr(Reg::B);
+
+        //0x00
+        assert!(cpu.state.zero);
+        assert!(!cpu.state.sign);
+        assert!(cpu.state.parity);
+    }
+
+    impl From<RegValue> for Reg {
+        fn from(r: RegValue) -> Self {
+            use self::RegValue::*;
+            match r {
+                A(_) => Reg::A,
+                B(_) => Reg::B,
+                C(_) => Reg::C,
+                D(_) => Reg::D,
+                E(_) => Reg::E,
+                H(_) => Reg::H,
+                L(_) => Reg::L,
+                M(_) => Reg::M,
+            }
+        }
+    }
+
+    #[rstest_parametrize(
+    init, query, expected,
+    case(Unwrap("RegValue::B(0x00)"), Unwrap("StateFlag::Zero"), Unwrap("true")),
+    case(Unwrap("RegValue::B(0x12)"), Unwrap("StateFlag::Zero"), Unwrap("false")),
+    case(Unwrap("RegValue::B(0xff)"), Unwrap("StateFlag::Zero"), Unwrap("false")),
+    case(Unwrap("RegValue::A(0x80)"), Unwrap("StateFlag::Sign"), Unwrap("true")),
+    case(Unwrap("RegValue::A(0xA3)"), Unwrap("StateFlag::Sign"), Unwrap("true")),
+    case(Unwrap("RegValue::A(0xff)"), Unwrap("StateFlag::Sign"), Unwrap("true")),
+    case(Unwrap("RegValue::A(0x00)"), Unwrap("StateFlag::Sign"), Unwrap("false")),
+    case(Unwrap("RegValue::A(0x12)"), Unwrap("StateFlag::Sign"), Unwrap("false")),
+    case(Unwrap("RegValue::A(0x7f)"), Unwrap("StateFlag::Sign"), Unwrap("false")),
+    case(Unwrap("RegValue::D(0x00)"), Unwrap("StateFlag::Parity"), Unwrap("true")),
+    case(Unwrap("RegValue::D(0x03)"), Unwrap("StateFlag::Parity"), Unwrap("true")),
+    case(Unwrap("RegValue::D(0xff)"), Unwrap("StateFlag::Parity"), Unwrap("true")),
+    case(Unwrap("RegValue::D(0x01)"), Unwrap("StateFlag::Parity"), Unwrap("false")),
+    case(Unwrap("RegValue::D(0x1f)"), Unwrap("StateFlag::Parity"), Unwrap("false")),
+    case(Unwrap("RegValue::D(0x37)"), Unwrap("StateFlag::Parity"), Unwrap("false")),
+    )]
+    fn static_flags<Q, R>(mut cpu: Cpu, init: RegValue, query: Q, expected: R)
+        where R: QueryResult, Q: CpuQuery<Result=R>
+    {
+        init.apply(&mut cpu);
+
+        cpu.fix_static_flags(init.into());
+
+        assert_eq!(query.ask(&cpu), expected);
+    }
+
+    impl From<(Reg, Word)> for RegValue {
+        fn from(vals: (Reg, u8)) -> Self {
+            let (r, v) = vals;
+            use self::Reg::*;
+            match r {
+                A => RegValue::A(v),
+                B => RegValue::B(v),
+                C => RegValue::C(v),
+                D => RegValue::D(v),
+                E => RegValue::E(v),
+                H => RegValue::H(v),
+                L => RegValue::L(v),
+                M => RegValue::M(v),
+            }
+        }
+    }
+
+    impl From<Reg> for WordReg {
+        fn from(r: Reg) -> Self {
+            use self::Reg::*;
+            match r {
+                A => WordReg::A,
+                B => WordReg::B,
+                C => WordReg::C,
+                D => WordReg::D,
+                E => WordReg::E,
+                H => WordReg::H,
+                L => WordReg::L,
+                M => WordReg::M,
+            }
+        }
+    }
+
+    #[rstest]
+    fn dcr_should_decrement_register(mut cpu: Cpu)
+    {
+        cpu.state.set_d(0x12);
+
+        cpu.dcr(Reg::D);
+
+        assert_eq!(cpu.state.d, 0x11);
+    }
+
+    #[rstest]
+    fn dcr_should_set_flags(mut cpu: Cpu)
+    {
+        cpu.state.set_b(0x02);
+
+        cpu.dcr(Reg::B);
+
+        //0x01
+        assert!(!cpu.state.zero);
+        assert!(!cpu.state.sign);
+        assert!(!cpu.state.parity);
+
+        cpu.dcr(Reg::B);
+
+        //0x00
+        assert!(cpu.state.zero);
+        assert!(!cpu.state.sign);
+        assert!(cpu.state.parity);
+
+        cpu.dcr(Reg::B);
+
+        //0xff
+        assert!(!cpu.state.zero);
+        assert!(cpu.state.sign);
+        assert!(cpu.state.parity);
+    }
+
+    #[derive(Copy, Clone)]
+    enum SRegCmd {
+        Inr,
+        Dcr,
+    }
+
+    impl From<(SRegCmd, Reg)> for Instruction {
+        fn from(vals: (SRegCmd, Reg)) -> Self {
+            let (cmd, r) = vals;
+            match cmd {
+                SRegCmd::Inr => Inr(r),
+                SRegCmd::Dcr => Dcr(r),
+            }
+        }
+    }
+
+    impl CpuQuery for Reg {
+        type Result = Word;
+
+        fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+            WordReg::from(*self).ask(&cpu)
+        }
+    }
+
+    #[rstest_parametrize(
+    cmd, reg, before, after,
+    case(Unwrap("SRegCmd::Inr"), Unwrap("Reg::A"), 0xa3, 0xa4),
+    case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::B"), 0x32, 0x31),
+    case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::M"), 0xaf, 0xae),
+    )]
+    fn single_register_command(mut cpu: Cpu, cmd: SRegCmd, reg: Reg, before: Word, after: Word) {
+        RegValue::from((reg, before)).apply(&mut cpu);
+
+        cpu.exec(Instruction::from((cmd, reg)));
+
+        assert_eq!(reg.ask(&cpu), after);
+    }
 }

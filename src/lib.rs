@@ -1,4 +1,5 @@
 #![feature(proc_macro)]
+#[cfg(test)]
 extern crate rstest;
 
 pub type Word = u8;
