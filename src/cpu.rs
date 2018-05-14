@@ -312,9 +312,16 @@ impl Cpu {
     }
 }
 
+/// Data transfer Instruction
+impl Cpu {
+    fn mov(&mut self, f: Reg, t: Reg) {
+        *self.mut_reg(t) = *self.reg(f)
+    }
+}
+
 /// Register Pair Instructions
 impl Cpu {
-    fn inx(&mut self, rp: RegPair) -> () {
+    fn inx(&mut self, rp: RegPair) {
         use self::RegPair::*;
         match rp {
             BC => {
@@ -336,7 +343,7 @@ impl Cpu {
         }
     }
 
-    fn dcx(&mut self, rp: RegPair) -> () {
+    fn dcx(&mut self, rp: RegPair) {
         use self::RegPair::*;
         match rp {
             BC => {
@@ -360,7 +367,7 @@ impl Cpu {
 }
 
 impl Cpu {
-    pub fn exec(&mut self, instruction: Instruction) -> () {
+    pub fn exec(&mut self, instruction: Instruction) {
         match instruction {
             Nop => {}
             Lxi(rp) => {
@@ -380,6 +387,9 @@ impl Cpu {
             }
             Cma => {
                 self.cma()
+            }
+            Mov(f, t) => {
+                self.mov(f, t)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -803,54 +813,6 @@ mod test {
     }
 
     #[rstest_parametrize(
-    init, reg, query, expected,
-    case(Unwrap("RegValue::A(0x33)"), Unwrap("Reg::A"), Unwrap("WordReg::A"), 0x34),
-    case(Unwrap("RegValue::B(0x00)"), Unwrap("Reg::B"), Unwrap("WordReg::B"), 0x01),
-    case(Unwrap("RegValue::C(0x23)"), Unwrap("Reg::C"), Unwrap("WordReg::C"), 0x24),
-    case(Unwrap("RegValue::D(0xaf)"), Unwrap("Reg::D"), Unwrap("WordReg::D"), 0xb0),
-    case(Unwrap("RegValue::E(0x01)"), Unwrap("Reg::E"), Unwrap("WordReg::E"), 0x02),
-    case(Unwrap("RegValue::H(0xd1)"), Unwrap("Reg::H"), Unwrap("WordReg::H"), 0xd2),
-    case(Unwrap("RegValue::L(0x53)"), Unwrap("Reg::L"), Unwrap("WordReg::L"), 0x54),
-    case(Unwrap("RegValue::M(0x12)"), Unwrap("Reg::M"), Unwrap("WordReg::M"), 0x13),
-    )]
-    fn inr_should_increment_register<I, Q, R>(mut cpu: Cpu, init: I, reg: Reg, query: Q, expected: R)
-        where I: ApplyState, R: QueryResult, Q: CpuQuery<Result=R>
-    {
-        init.apply(&mut cpu);
-
-        cpu.inr(reg);
-
-        assert_eq!(query.ask(&cpu), expected);
-    }
-
-    #[rstest]
-    fn inr_should_set_flags(mut cpu: Cpu)
-    {
-        cpu.state.set_b(0xfd);
-
-        cpu.inr(Reg::B);
-
-        //0xfe
-        assert!(!cpu.state.zero);
-        assert!(cpu.state.sign);
-        assert!(!cpu.state.parity);
-
-        cpu.inr(Reg::B);
-
-        //0xff
-        assert!(!cpu.state.zero);
-        assert!(cpu.state.sign);
-        assert!(cpu.state.parity);
-
-        cpu.inr(Reg::B);
-
-        //0x00
-        assert!(cpu.state.zero);
-        assert!(!cpu.state.sign);
-        assert!(cpu.state.parity);
-    }
-
-    #[rstest_parametrize(
     init, query, expected,
     case(Unwrap("RegValue::B(0x00)"), Unwrap("StateFlag::Zero"), Unwrap("true")),
     case(Unwrap("RegValue::B(0x12)"), Unwrap("StateFlag::Zero"), Unwrap("false")),
@@ -878,56 +840,131 @@ mod test {
         assert_eq!(query.ask(&cpu), expected);
     }
 
-    #[rstest]
-    fn dcr_should_decrement_register(mut cpu: Cpu)
-    {
-        cpu.state.set_d(0x12);
+    mod single_register {
+        use super::*;
 
-        cpu.dcr(Reg::D);
+        #[rstest_parametrize(
+        init, reg, query, expected,
+        case(Unwrap("RegValue::A(0x33)"), Unwrap("Reg::A"), Unwrap("WordReg::A"), 0x34),
+        case(Unwrap("RegValue::B(0x00)"), Unwrap("Reg::B"), Unwrap("WordReg::B"), 0x01),
+        case(Unwrap("RegValue::C(0x23)"), Unwrap("Reg::C"), Unwrap("WordReg::C"), 0x24),
+        case(Unwrap("RegValue::D(0xaf)"), Unwrap("Reg::D"), Unwrap("WordReg::D"), 0xb0),
+        case(Unwrap("RegValue::E(0x01)"), Unwrap("Reg::E"), Unwrap("WordReg::E"), 0x02),
+        case(Unwrap("RegValue::H(0xd1)"), Unwrap("Reg::H"), Unwrap("WordReg::H"), 0xd2),
+        case(Unwrap("RegValue::L(0x53)"), Unwrap("Reg::L"), Unwrap("WordReg::L"), 0x54),
+        case(Unwrap("RegValue::M(0x12)"), Unwrap("Reg::M"), Unwrap("WordReg::M"), 0x13),
+        )]
+        fn inr_should_increment_register<I, Q, R>(mut cpu: Cpu, init: I, reg: Reg, query: Q, expected: R)
+            where I: ApplyState, R: QueryResult, Q: CpuQuery<Result=R>
+        {
+            init.apply(&mut cpu);
 
-        assert_eq!(cpu.state.d, 0x11);
+            cpu.inr(reg);
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
+        #[rstest]
+        fn inr_should_set_flags(mut cpu: Cpu)
+        {
+            cpu.state.set_b(0xfd);
+
+            cpu.inr(Reg::B);
+
+            //0xfe
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(!cpu.state.parity);
+
+            cpu.inr(Reg::B);
+
+            //0xff
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
+
+            cpu.inr(Reg::B);
+
+            //0x00
+            assert!(cpu.state.zero);
+            assert!(!cpu.state.sign);
+            assert!(cpu.state.parity);
+        }
+
+        #[rstest]
+        fn dcr_should_decrement_register(mut cpu: Cpu)
+        {
+            cpu.state.set_d(0x12);
+
+            cpu.dcr(Reg::D);
+
+            assert_eq!(cpu.state.d, 0x11);
+        }
+
+        #[rstest]
+        fn dcr_should_set_flags(mut cpu: Cpu)
+        {
+            cpu.state.set_b(0x02);
+
+            cpu.dcr(Reg::B);
+
+            //0x01
+            assert!(!cpu.state.zero);
+            assert!(!cpu.state.sign);
+            assert!(!cpu.state.parity);
+
+            cpu.dcr(Reg::B);
+
+            //0x00
+            assert!(cpu.state.zero);
+            assert!(!cpu.state.sign);
+            assert!(cpu.state.parity);
+
+            cpu.dcr(Reg::B);
+
+            //0xff
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
+        }
+
+        #[rstest_parametrize(
+        cmd, reg, before, after,
+        case(Unwrap("SRegCmd::Inr"), Unwrap("Reg::A"), 0xa3, 0xa4),
+        case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::B"), 0x32, 0x31),
+        case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::M"), 0xaf, 0xae),
+        )]
+        fn single_register_command(mut cpu: Cpu, cmd: SRegCmd, reg: Reg, before: Word, after: Word) {
+            RegValue::from((reg, before)).apply(&mut cpu);
+
+            cpu.exec(Instruction::from((cmd, reg)));
+
+            assert_eq!(reg.ask(&cpu), after);
+        }
     }
 
-    #[rstest]
-    fn dcr_should_set_flags(mut cpu: Cpu)
-    {
-        cpu.state.set_b(0x02);
+    mod data_transfer {
+        use super::*;
 
-        cpu.dcr(Reg::B);
+        #[rstest]
+        fn mov_should_move_register_content(mut cpu: Cpu) {
+            RegValue::A(0x33).apply(&mut cpu);
 
-        //0x01
-        assert!(!cpu.state.zero);
-        assert!(!cpu.state.sign);
-        assert!(!cpu.state.parity);
+            cpu.exec(Mov(Reg::A, Reg::B));
 
-        cpu.dcr(Reg::B);
+            assert_eq!(Reg::B.ask(&cpu), 0x33)
+        }
 
-        //0x00
-        assert!(cpu.state.zero);
-        assert!(!cpu.state.sign);
-        assert!(cpu.state.parity);
+        #[rstest]
+        fn mov_should_move_not_change_source(mut cpu: Cpu) {
+            RegValue::D(0xfa).apply(&mut cpu);
 
-        cpu.dcr(Reg::B);
+            cpu.exec(Mov(Reg::D, Reg::C));
 
-        //0xff
-        assert!(!cpu.state.zero);
-        assert!(cpu.state.sign);
-        assert!(cpu.state.parity);
+            assert_eq!(Reg::D.ask(&cpu), 0xfa)
+        }
     }
 
-    #[rstest_parametrize(
-    cmd, reg, before, after,
-    case(Unwrap("SRegCmd::Inr"), Unwrap("Reg::A"), 0xa3, 0xa4),
-    case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::B"), 0x32, 0x31),
-    case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::M"), 0xaf, 0xae),
-    )]
-    fn single_register_command(mut cpu: Cpu, cmd: SRegCmd, reg: Reg, before: Word, after: Word) {
-        RegValue::from((reg, before)).apply(&mut cpu);
-
-        cpu.exec(Instruction::from((cmd, reg)));
-
-        assert_eq!(reg.ask(&cpu), after);
-    }
 
     #[rstest]
     fn cma(mut cpu: Cpu) {
