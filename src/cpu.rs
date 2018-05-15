@@ -197,9 +197,32 @@ impl State {
     }
 }
 
+#[derive(Clone)]
+struct MemoryBus {
+    bank: [u8; 0x10000]
+}
+
+impl Default for MemoryBus {
+    fn default() -> Self {
+        MemoryBus { bank: [0; 0x10000] }
+    }
+}
+
+impl MemoryBus {
+    fn read_byte(&self, address: Address) -> u8 {
+        self.bank[address as usize]
+    }
+
+    fn write_byte(&mut self, address: Address, val: u8) {
+        self.bank[address as usize] = val
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct Cpu {
     state: State,
+
+    bus: MemoryBus,
     m: RegWord,
 }
 
@@ -231,6 +254,16 @@ impl Cpu {
             L => &self.state.l,
             M => &self.m,
         }
+    }
+
+    fn address(&self, rp: self::RegPair) -> Address {
+        use self::RegPair::*;
+        match rp {
+            BC => self.bc(),
+            DE => self.de(),
+            HL => self.hl(),
+            SP => self.state.sp,
+        }.into()
     }
 
     fn bc(&self) -> RegAddress {
@@ -317,6 +350,16 @@ impl Cpu {
     fn mov(&mut self, f: Reg, t: Reg) {
         *self.mut_reg(t) = *self.reg(f)
     }
+
+    fn stax(&mut self, rp: RegPair) {
+        let address = self.address(rp);
+        self.bus.write_byte(address, self.state.a.into());
+    }
+
+    fn ldax(&mut self, rp: RegPair) {
+        let address = self.address(rp);
+        self.state.a = self.bus.read_byte(address).into();
+    }
 }
 
 /// Register Pair Instructions
@@ -390,6 +433,12 @@ impl Cpu {
             }
             Mov(f, t) => {
                 self.mov(f, t)
+            }
+            Stax(rp) if rp.is_basic() => {
+                self.stax(rp)
+            }
+            Ldax(rp) if rp.is_basic() => {
+                self.ldax(rp)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -962,6 +1011,47 @@ mod test {
             cpu.exec(Mov(Reg::D, Reg::C));
 
             assert_eq!(Reg::D.ask(&cpu), 0xfa)
+        }
+
+        fn stax_should_store_accumulator(mut cpu: Cpu) {
+            cpu.set_bc(0x3f16);
+            cpu.state.set_a(0x32);
+
+            cpu.exec(Stax(RegPair::BC));
+
+            assert_eq!(cpu.bus.read_byte(0x3f16), 0x32);
+        }
+
+        #[rstest_parametrize(
+        reg_pair,
+            case(Unwrap("RegPair::HL")),
+            case(Unwrap("RegPair::SP")),
+        )]
+        #[should_panic]
+        fn stax_should_panic(mut cpu: Cpu, reg_pair: RegPair) {
+            cpu.exec(Stax(reg_pair));
+        }
+
+        #[rstest]
+        fn ldax_should_load_accumulator(mut cpu: Cpu) {
+            let address = 0x78a2;
+            cpu.bus.write_byte(address, 0x21);
+            cpu.set_de(address);
+            cpu.state.set_a(0xad);
+
+            cpu.exec(Ldax(RegPair::DE));
+
+            assert_eq!(cpu.state.a, 0x21);
+        }
+
+        #[rstest_parametrize(
+        reg_pair,
+            case(Unwrap("RegPair::HL")),
+            case(Unwrap("RegPair::SP")),
+        )]
+        #[should_panic]
+        fn ldax_should_panic(mut cpu: Cpu, reg_pair: RegPair) {
+            cpu.exec(Ldax(reg_pair));
         }
     }
 
