@@ -389,6 +389,13 @@ impl Cpu {
         self.state.carry = self.state.a.carry;
         self.fix_static_flags(Reg::A)
     }
+
+    fn sbb(&mut self, r: Reg) {
+        let v = self.reg(r).val;
+        self.state.a -= if self.state.carry { v + 1 } else { v };
+        self.state.carry = self.state.a.carry;
+        self.fix_static_flags(Reg::A)
+    }
 }
 
 /// Register Pair Instructions
@@ -477,6 +484,9 @@ impl Cpu {
             }
             Sub(r) => {
                 self.sub(r)
+            }
+            Sbb(r) => {
+                self.sbb(r)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1267,6 +1277,60 @@ mod test {
             cpu.sub(Reg::B);
 
             assert!(cpu.state.carry);
+        }
+
+        #[rstest_parametrize(
+        start, carry, r, v, expected,
+        case(0xa2, Unwrap("false"), Unwrap("Reg::B"), 0xa0, 0x02),
+        case(0xa2, Unwrap("true"), Unwrap("Reg::B"), 0xa0, 0x01),
+        case(0x33, Unwrap("false"), Unwrap("Reg::M"), 0x54, 0xdf),
+        case(0x33, Unwrap("true"), Unwrap("Reg::M"), 0x54, 0xde),
+        case(0xfd, Unwrap("false"), Unwrap("Reg::C"), 0x04, 0xf9),
+        case(0xfd, Unwrap("true"), Unwrap("Reg::C"), 0x04, 0xf8),
+        )]
+        fn sbb_should_perform_subtraction_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
+                                                          r: Reg, v: Word, expected: Word) {
+            cpu.state.set_a(start);
+            cpu.state.carry = carry;
+            RegValue::from((r, v)).apply(&mut cpu);
+
+            cpu.sbb(r);
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest_parametrize(
+        carry, v, expected,
+        case(Unwrap("false"), 0x01, Unwrap("false")),
+        case(Unwrap("true"), 0x01, Unwrap("false")),
+        case(Unwrap("false"), 0x10, Unwrap("false")),
+        case(Unwrap("true"), 0x10, Unwrap("true")),
+        case(Unwrap("false"), 0x11, Unwrap("true")),
+        case(Unwrap("true"), 0x11, Unwrap("true")),
+        )]
+        fn sbb_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Word, expected: bool) {
+            cpu.state.set_a(0x10);
+            cpu.state.carry = carry;
+            cpu.state.set_b(v);
+
+            cpu.sbb(Reg::B);
+
+            assert_eq!(cpu.state.carry, expected);
+        }
+
+        #[rstest]
+        fn sbb_should_update_flags(mut cpu: Cpu) {
+            cpu.state.set_a(0x01);
+            cpu.state.set_b(0x01);
+            cpu.state.carry = true;
+            cpu.state.zero = true;
+
+            cpu.sbb(Reg::B);
+
+            //0xff
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
         }
     }
 
