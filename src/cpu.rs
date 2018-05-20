@@ -4,7 +4,10 @@ use super::{
 };
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
-struct RegWord(Word);
+struct RegWord {
+    val: Word,
+    carry: bool,
+}
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 struct RegAddress(Address);
@@ -12,23 +15,22 @@ struct RegAddress(Address);
 impl RegWord {
     fn increment(&mut self) { *self += 1; }
     fn decrement(&mut self) { *self -= 1; }
-    fn one_complement(&mut self) { *self = (0xff ^ self.0).into() }
-    fn is_zero(&self) -> bool { self.0 == 0 }
-    fn sign_bit(&self) -> bool { (self.0 & 0x80) != 0x00 }
-    fn parity(&self) -> bool { (self.0.count_ones() % 2) == 0 }
+    fn one_complement(&mut self) { *self = (0xff ^ self.val).into() }
+    fn is_zero(&self) -> bool { self.val == 0 }
+    fn sign_bit(&self) -> bool { (self.val & 0x80) != 0x00 }
+    fn parity(&self) -> bool { (self.val.count_ones() % 2) == 0 }
 }
 
 impl ::std::ops::AddAssign<Word> for RegWord {
     fn add_assign(&mut self, rhs: Word) {
-        let (a, _b) = self.0.overflowing_add(rhs);
-        self.0 = a;
+        *self = self.val.overflowing_add(rhs).into();
     }
 }
 
 impl ::std::ops::SubAssign<Word> for RegWord {
     fn sub_assign(&mut self, rhs: u8) {
-        let (a, _b) = self.0.overflowing_sub(rhs);
-        self.0 = a;
+        let (a, _b) = self.val.overflowing_sub(rhs);
+        self.val = a;
     }
 }
 
@@ -36,8 +38,8 @@ impl ::std::ops::Add<Word> for RegWord {
     type Output = RegWord;
 
     fn add(self, rhs: Word) -> <Self as ::std::ops::Add<Word>>::Output {
-        let (a, _b) = self.0.overflowing_add(rhs);
-        RegWord(a)
+        let (val, carry) = self.val.overflowing_add(rhs);
+        RegWord { val, carry }
     }
 }
 
@@ -45,26 +47,32 @@ impl ::std::ops::Sub<Word> for RegWord {
     type Output = RegWord;
 
     fn sub(self, rhs: Word) -> <Self as ::std::ops::Sub<Word>>::Output {
-        let (a, _b) = self.0.overflowing_sub(rhs);
-        RegWord(a)
+        let (val, carry) = self.val.overflowing_sub(rhs);
+        RegWord { val, carry }
     }
 }
 
 impl PartialEq<Word> for RegWord {
     fn eq(&self, other: &Word) -> bool {
-        self.0 == *other
+        self.val == *other
     }
 }
 
 impl From<Word> for RegWord {
-    fn from(v: Word) -> Self {
-        RegWord(v)
+    fn from(val: Word) -> Self {
+        RegWord { val, ..Default::default() }
+    }
+}
+
+impl From<(Word, bool)> for RegWord {
+    fn from(data: (Word, bool)) -> Self {
+        RegWord { val: data.0, carry: data.1 }
     }
 }
 
 impl Into<Word> for RegWord {
     fn into(self) -> Word {
-        self.0
+        self.val
     }
 }
 
@@ -114,7 +122,7 @@ impl From<(Word, Word)> for RegAddress {
 impl From<(RegWord, RegWord)> for RegAddress {
     fn from(v: (RegWord, RegWord)) -> Self {
         let (h, l) = v;
-        (h.0, l.0).into()
+        (h.val, l.val).into()
     }
 }
 
@@ -299,6 +307,12 @@ impl Cpu {
     fn set_m(&mut self, val: Word) {
         self.m = val.into();
     }
+
+    fn fix_static_flags(&mut self, r: Reg) {
+        self.state.zero = self.reg(r).is_zero();
+        self.state.sign = self.reg(r).sign_bit();
+        self.state.parity = self.reg(r).parity();
+    }
 }
 
 /// Immediate Instructions
@@ -337,12 +351,6 @@ impl Cpu {
         self.mut_reg(r).decrement();
         self.fix_static_flags(r);
     }
-
-    fn fix_static_flags(&mut self, r: Reg) {
-        self.state.zero = self.reg(r).is_zero();
-        self.state.sign = self.reg(r).sign_bit();
-        self.state.parity = self.reg(r).parity();
-    }
 }
 
 /// Data transfer Instruction
@@ -359,6 +367,21 @@ impl Cpu {
     fn ldax(&mut self, rp: RegPair) {
         let address = self.address(rp);
         self.state.a = self.bus.read_byte(address).into();
+    }
+}
+
+/// Accumulator
+impl Cpu {
+    fn add(&mut self, r: Reg) {
+        self.state.a += self.reg(r).val;
+        self.state.carry = self.state.a.carry;
+        self.fix_static_flags(Reg::A)
+    }
+    fn adc(&mut self, r: Reg) {
+        let v = self.reg(r).val;
+        self.state.a += if self.state.carry { v + 1 } else { v };
+        self.state.carry = self.state.a.carry;
+        self.fix_static_flags(Reg::A)
     }
 }
 
@@ -439,6 +462,12 @@ impl Cpu {
             }
             Ldax(rp) if rp.is_basic() => {
                 self.ldax(rp)
+            }
+            Add(r) => {
+                self.add(r)
+            }
+            Adc(r) => {
+                self.adc(r)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -646,28 +675,28 @@ mod test {
     }
 
     trait ApplyState {
-        fn apply(self, cpu: &mut Cpu);
+        fn apply(&self, cpu: &mut Cpu);
     }
 
     impl ApplyState for RegPairValue {
-        fn apply(self, cpu: &mut Cpu) {
+        fn apply(&self, cpu: &mut Cpu) {
             use self::RegPairValue::*;
             use self::RegValue::*;
             match self {
                 BC(b, c) => {
-                    B(b).apply(cpu);
-                    C(c).apply(cpu);
+                    B(*b).apply(cpu);
+                    C(*c).apply(cpu);
                 }
                 DE(d, e) => {
-                    D(d).apply(cpu);
-                    E(e).apply(cpu);
+                    D(*d).apply(cpu);
+                    E(*e).apply(cpu);
                 }
                 HL(h, l) => {
-                    H(h).apply(cpu);
-                    L(l).apply(cpu);
+                    H(*h).apply(cpu);
+                    L(*l).apply(cpu);
                 }
                 SP(sp) => {
-                    cpu.state.set_sp(sp);
+                    cpu.state.set_sp(*sp);
                 }
             }
         }
@@ -752,17 +781,17 @@ mod test {
     }
 
     impl ApplyState for RegValue {
-        fn apply(self, cpu: &mut Cpu) {
+        fn apply(&self, cpu: &mut Cpu) {
             use self::RegValue::*;
             match self {
-                A(v) => { cpu.state.set_a(v); }
-                B(v) => { cpu.state.set_b(v); }
-                C(v) => { cpu.state.set_c(v); }
-                D(v) => { cpu.state.set_d(v); }
-                E(v) => { cpu.state.set_e(v); }
-                H(v) => { cpu.state.set_h(v); }
-                L(v) => { cpu.state.set_l(v); }
-                M(v) => { cpu.set_m(v); }
+                A(v) => { cpu.state.set_a(*v); }
+                B(v) => { cpu.state.set_b(*v); }
+                C(v) => { cpu.state.set_c(*v); }
+                D(v) => { cpu.state.set_d(*v); }
+                E(v) => { cpu.state.set_e(*v); }
+                H(v) => { cpu.state.set_h(*v); }
+                L(v) => { cpu.state.set_l(*v); }
+                M(v) => { cpu.set_m(*v); }
             }
         }
     }
@@ -914,7 +943,7 @@ mod test {
         }
 
         #[rstest]
-        fn inr_should_set_flags(mut cpu: Cpu)
+        fn inr_should_update_flags(mut cpu: Cpu)
         {
             cpu.state.set_b(0xfd);
 
@@ -941,6 +970,21 @@ mod test {
         }
 
         #[rstest]
+        fn inr_should_not_care_carry_flag(mut cpu: Cpu) {
+            cpu.state.set_b(0xff);
+
+            cpu.inr(Reg::B);
+
+            assert!(!cpu.state.carry);
+
+            cpu.state.carry = true;
+
+            cpu.inr(Reg::B);
+
+            assert!(cpu.state.carry);
+        }
+
+        #[rstest]
         fn dcr_should_decrement_register(mut cpu: Cpu)
         {
             cpu.state.set_d(0x12);
@@ -951,7 +995,7 @@ mod test {
         }
 
         #[rstest]
-        fn dcr_should_set_flags(mut cpu: Cpu)
+        fn dcr_should_update_flags(mut cpu: Cpu)
         {
             cpu.state.set_b(0x02);
 
@@ -975,6 +1019,21 @@ mod test {
             assert!(!cpu.state.zero);
             assert!(cpu.state.sign);
             assert!(cpu.state.parity);
+        }
+
+        #[rstest]
+        fn dcr_should_not_care_carry_flag(mut cpu: Cpu) {
+            cpu.state.set_b(0x00);
+
+            cpu.dcr(Reg::B);
+
+            assert!(!cpu.state.carry);
+
+            cpu.state.carry = true;
+
+            cpu.dcr(Reg::B);
+
+            assert!(cpu.state.carry);
         }
 
         #[rstest_parametrize(
@@ -1013,6 +1072,7 @@ mod test {
             assert_eq!(Reg::D.ask(&cpu), 0xfa)
         }
 
+        #[rstest]
         fn stax_should_store_accumulator(mut cpu: Cpu) {
             cpu.set_bc(0x3f16);
             cpu.state.set_a(0x32);
@@ -1024,8 +1084,8 @@ mod test {
 
         #[rstest_parametrize(
         reg_pair,
-            case(Unwrap("RegPair::HL")),
-            case(Unwrap("RegPair::SP")),
+        case(Unwrap("RegPair::HL")),
+        case(Unwrap("RegPair::SP")),
         )]
         #[should_panic]
         fn stax_should_panic(mut cpu: Cpu, reg_pair: RegPair) {
@@ -1046,13 +1106,105 @@ mod test {
 
         #[rstest_parametrize(
         reg_pair,
-            case(Unwrap("RegPair::HL")),
-            case(Unwrap("RegPair::SP")),
+        case(Unwrap("RegPair::HL")),
+        case(Unwrap("RegPair::SP")),
         )]
         #[should_panic]
         fn ldax_should_panic(mut cpu: Cpu, reg_pair: RegPair) {
             cpu.exec(Ldax(reg_pair));
         }
+    }
+
+    mod accumulator {
+        use super::*;
+
+        #[rstest_parametrize(
+        start, r, v, expected,
+        case(0x12, Unwrap("Reg::B"), 0xa0, 0xb2),
+        case(0x54, Unwrap("Reg::M"), 0x33, 0x87),
+        case(0xfd, Unwrap("Reg::C"), 0x04, 0x01),
+        )]
+        fn add_should_perform_addition(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+            cpu.state.set_a(start);
+            RegValue::from((r, v)).apply(&mut cpu);
+
+            cpu.exec(Add(r));
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest]
+        fn add_should_double_accumulator_when_refer_itself(mut cpu: Cpu) {
+            cpu.state.set_a(0x26);
+
+            cpu.exec(Add(Reg::A));
+
+            assert_eq!(cpu.state.a, 0x4c);
+        }
+
+        #[rstest]
+        fn add_should_update_flags(mut cpu: Cpu) {
+            cpu.state.set_a(0xfd);
+            cpu.state.set_b(0x02);
+            cpu.state.zero = true;
+
+            cpu.add(Reg::B);
+
+            //0xff
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
+        }
+
+        #[rstest]
+        fn add_should_update_the_carry_flag(mut cpu: Cpu) {
+            cpu.state.set_a(0xf0);
+            cpu.state.set_b(0x13);
+
+            cpu.add(Reg::B);
+
+            assert!(cpu.state.carry);
+        }
+
+        #[rstest_parametrize(
+        start, carry, r, v, expected,
+        case(0x12, Unwrap("false"), Unwrap("Reg::B"), 0xa0, 0xb2),
+        case(0x12, Unwrap("true"), Unwrap("Reg::B"), 0xa0, 0xb3),
+        case(0x54, Unwrap("false"), Unwrap("Reg::M"), 0x33, 0x87),
+        case(0x54, Unwrap("true"), Unwrap("Reg::M"), 0x33, 0x88),
+        case(0xfd, Unwrap("false"), Unwrap("Reg::C"), 0x04, 0x01),
+        case(0xfd, Unwrap("true"), Unwrap("Reg::C"), 0x04, 0x02),
+        )]
+        fn adc_should_perform_addition_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
+                                                          r: Reg, v: Word, expected: Word) {
+            cpu.state.set_a(start);
+            cpu.state.carry = carry;
+            RegValue::from((r, v)).apply(&mut cpu);
+
+            cpu.exec(Adc(r));
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest_parametrize(
+        carry, v, expected,
+        case(Unwrap("false"), 0x01, Unwrap("false")),
+        case(Unwrap("true"), 0x01, Unwrap("false")),
+        case(Unwrap("false"), 0x0f, Unwrap("false")),
+        case(Unwrap("true"), 0x0f, Unwrap("true")),
+        case(Unwrap("false"), 0x10, Unwrap("true")),
+        case(Unwrap("true"), 0x10, Unwrap("true")),
+        )]
+        fn adc_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Word, expected: bool) {
+            cpu.state.set_a(0xf0);
+            cpu.state.carry = carry;
+            cpu.state.set_b(v);
+
+            cpu.exec(Adc(Reg::B));
+
+            assert_eq!(cpu.state.carry, expected);
+        }
+
     }
 
 
