@@ -29,8 +29,7 @@ impl ::std::ops::AddAssign<Word> for RegWord {
 
 impl ::std::ops::SubAssign<Word> for RegWord {
     fn sub_assign(&mut self, rhs: u8) {
-        let (a, _b) = self.val.overflowing_sub(rhs);
-        self.val = a;
+        *self = self.val.overflowing_sub(rhs).into();
     }
 }
 
@@ -377,9 +376,16 @@ impl Cpu {
         self.state.carry = self.state.a.carry;
         self.fix_static_flags(Reg::A)
     }
+
     fn adc(&mut self, r: Reg) {
         let v = self.reg(r).val;
         self.state.a += if self.state.carry { v + 1 } else { v };
+        self.state.carry = self.state.a.carry;
+        self.fix_static_flags(Reg::A)
+    }
+
+    fn sub(&mut self, r: Reg) {
+        self.state.a -= self.reg(r).val;
         self.state.carry = self.state.a.carry;
         self.fix_static_flags(Reg::A)
     }
@@ -468,6 +474,9 @@ impl Cpu {
             }
             Adc(r) => {
                 self.adc(r)
+            }
+            Sub(r) => {
+                self.sub(r)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1205,6 +1214,60 @@ mod test {
             assert_eq!(cpu.state.carry, expected);
         }
 
+        #[rstest]
+        fn adc_should_update_flags(mut cpu: Cpu) {
+            cpu.state.set_a(0xfd);
+            cpu.state.set_b(0x01);
+            cpu.state.carry = true;
+            cpu.state.zero = true;
+
+            cpu.adc(Reg::B);
+
+            //0xff
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
+        }
+
+        #[rstest_parametrize(
+        start, r, v, expected,
+        case(0xfd, Unwrap("Reg::C"), 0x04, 0xf9),
+        case(0x12, Unwrap("Reg::B"), 0xa0, 0x72),
+        case(0x54, Unwrap("Reg::M"), 0x33, 0x21),
+        )]
+        fn sub_should_perform_subtraction(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+            cpu.state.set_a(start);
+            RegValue::from((r, v)).apply(&mut cpu);
+
+            cpu.exec(Sub(r));
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest]
+        fn sub_should_update_flags(mut cpu: Cpu) {
+            cpu.state.set_a(0x0);
+            cpu.state.set_b(0x01);
+            cpu.state.zero = true;
+
+            cpu.sub(Reg::B);
+
+            //0xff
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
+        }
+
+
+        #[rstest]
+        fn sub_should_update_carry_flag(mut cpu: Cpu) {
+            cpu.state.set_a(0x10);
+            cpu.state.set_b(0x13);
+
+            cpu.sub(Reg::B);
+
+            assert!(cpu.state.carry);
+        }
     }
 
 
