@@ -911,21 +911,21 @@ mod test {
 
     #[rstest_parametrize(
     init, query, expected,
-    case(Unwrap("RegValue::B(0x00)"), Unwrap("StateFlag::Zero"), Unwrap("true")),
-    case(Unwrap("RegValue::B(0x12)"), Unwrap("StateFlag::Zero"), Unwrap("false")),
-    case(Unwrap("RegValue::B(0xff)"), Unwrap("StateFlag::Zero"), Unwrap("false")),
-    case(Unwrap("RegValue::A(0x80)"), Unwrap("StateFlag::Sign"), Unwrap("true")),
-    case(Unwrap("RegValue::A(0xA3)"), Unwrap("StateFlag::Sign"), Unwrap("true")),
-    case(Unwrap("RegValue::A(0xff)"), Unwrap("StateFlag::Sign"), Unwrap("true")),
-    case(Unwrap("RegValue::A(0x00)"), Unwrap("StateFlag::Sign"), Unwrap("false")),
-    case(Unwrap("RegValue::A(0x12)"), Unwrap("StateFlag::Sign"), Unwrap("false")),
-    case(Unwrap("RegValue::A(0x7f)"), Unwrap("StateFlag::Sign"), Unwrap("false")),
-    case(Unwrap("RegValue::D(0x00)"), Unwrap("StateFlag::Parity"), Unwrap("true")),
-    case(Unwrap("RegValue::D(0x03)"), Unwrap("StateFlag::Parity"), Unwrap("true")),
-    case(Unwrap("RegValue::D(0xff)"), Unwrap("StateFlag::Parity"), Unwrap("true")),
-    case(Unwrap("RegValue::D(0x01)"), Unwrap("StateFlag::Parity"), Unwrap("false")),
-    case(Unwrap("RegValue::D(0x1f)"), Unwrap("StateFlag::Parity"), Unwrap("false")),
-    case(Unwrap("RegValue::D(0x37)"), Unwrap("StateFlag::Parity"), Unwrap("false")),
+    case(Unwrap("RegValue::B(0x00)"), Unwrap("StateFlag::Zero"), true),
+    case(Unwrap("RegValue::B(0x12)"), Unwrap("StateFlag::Zero"), false),
+    case(Unwrap("RegValue::B(0xff)"), Unwrap("StateFlag::Zero"), false),
+    case(Unwrap("RegValue::A(0x80)"), Unwrap("StateFlag::Sign"), true),
+    case(Unwrap("RegValue::A(0xA3)"), Unwrap("StateFlag::Sign"), true),
+    case(Unwrap("RegValue::A(0xff)"), Unwrap("StateFlag::Sign"), true),
+    case(Unwrap("RegValue::A(0x00)"), Unwrap("StateFlag::Sign"), false),
+    case(Unwrap("RegValue::A(0x12)"), Unwrap("StateFlag::Sign"), false),
+    case(Unwrap("RegValue::A(0x7f)"), Unwrap("StateFlag::Sign"), false),
+    case(Unwrap("RegValue::D(0x00)"), Unwrap("StateFlag::Parity"), true),
+    case(Unwrap("RegValue::D(0x03)"), Unwrap("StateFlag::Parity"), true),
+    case(Unwrap("RegValue::D(0xff)"), Unwrap("StateFlag::Parity"), true),
+    case(Unwrap("RegValue::D(0x01)"), Unwrap("StateFlag::Parity"), false),
+    case(Unwrap("RegValue::D(0x1f)"), Unwrap("StateFlag::Parity"), false),
+    case(Unwrap("RegValue::D(0x37)"), Unwrap("StateFlag::Parity"), false),
     )]
     fn static_flags<Q, R>(mut cpu: Cpu, init: RegValue, query: Q, expected: R)
         where R: QueryResult, Q: CpuQuery<Result=R>
@@ -1187,12 +1187,12 @@ mod test {
 
         #[rstest_parametrize(
         start, carry, r, v, expected,
-        case(0x12, Unwrap("false"), Unwrap("Reg::B"), 0xa0, 0xb2),
-        case(0x12, Unwrap("true"), Unwrap("Reg::B"), 0xa0, 0xb3),
-        case(0x54, Unwrap("false"), Unwrap("Reg::M"), 0x33, 0x87),
-        case(0x54, Unwrap("true"), Unwrap("Reg::M"), 0x33, 0x88),
-        case(0xfd, Unwrap("false"), Unwrap("Reg::C"), 0x04, 0x01),
-        case(0xfd, Unwrap("true"), Unwrap("Reg::C"), 0x04, 0x02),
+        case(0x12, false, Unwrap("Reg::B"), 0xa0, 0xb2),
+        case(0x12, true, Unwrap("Reg::B"), 0xa0, 0xb3),
+        case(0x54, false, Unwrap("Reg::M"), 0x33, 0x87),
+        case(0x54, true, Unwrap("Reg::M"), 0x33, 0x88),
+        case(0xfd, false, Unwrap("Reg::C"), 0x04, 0x01),
+        case(0xfd, true, Unwrap("Reg::C"), 0x04, 0x02),
         )]
         fn adc_should_perform_addition_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
                                                           r: Reg, v: Word, expected: Word) {
@@ -1207,12 +1207,12 @@ mod test {
 
         #[rstest_parametrize(
         carry, v, expected,
-        case(Unwrap("false"), 0x01, Unwrap("false")),
-        case(Unwrap("true"), 0x01, Unwrap("false")),
-        case(Unwrap("false"), 0x0f, Unwrap("false")),
-        case(Unwrap("true"), 0x0f, Unwrap("true")),
-        case(Unwrap("false"), 0x10, Unwrap("true")),
-        case(Unwrap("true"), 0x10, Unwrap("true")),
+        case(false, 0x01, false),
+        case(true, 0x01, false),
+        case(false, 0x0f, false),
+        case(true, 0x0f, true),
+        case(false, 0x10, true),
+        case(true, 0x10, true),
         )]
         fn adc_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Word, expected: bool) {
             cpu.state.set_a(0xf0);
@@ -1281,12 +1281,12 @@ mod test {
 
         #[rstest_parametrize(
         start, carry, r, v, expected,
-        case(0xa2, Unwrap("false"), Unwrap("Reg::B"), 0xa0, 0x02),
-        case(0xa2, Unwrap("true"), Unwrap("Reg::B"), 0xa0, 0x01),
-        case(0x33, Unwrap("false"), Unwrap("Reg::M"), 0x54, 0xdf),
-        case(0x33, Unwrap("true"), Unwrap("Reg::M"), 0x54, 0xde),
-        case(0xfd, Unwrap("false"), Unwrap("Reg::C"), 0x04, 0xf9),
-        case(0xfd, Unwrap("true"), Unwrap("Reg::C"), 0x04, 0xf8),
+        case(0xa2, false, Unwrap("Reg::B"), 0xa0, 0x02),
+        case(0xa2, true, Unwrap("Reg::B"), 0xa0, 0x01),
+        case(0x33, false, Unwrap("Reg::M"), 0x54, 0xdf),
+        case(0x33, true, Unwrap("Reg::M"), 0x54, 0xde),
+        case(0xfd, false, Unwrap("Reg::C"), 0x04, 0xf9),
+        case(0xfd, true, Unwrap("Reg::C"), 0x04, 0xf8),
         )]
         fn sbb_should_perform_subtraction_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
                                                           r: Reg, v: Word, expected: Word) {
@@ -1301,12 +1301,12 @@ mod test {
 
         #[rstest_parametrize(
         carry, v, expected,
-        case(Unwrap("false"), 0x01, Unwrap("false")),
-        case(Unwrap("true"), 0x01, Unwrap("false")),
-        case(Unwrap("false"), 0x10, Unwrap("false")),
-        case(Unwrap("true"), 0x10, Unwrap("true")),
-        case(Unwrap("false"), 0x11, Unwrap("true")),
-        case(Unwrap("true"), 0x11, Unwrap("true")),
+        case(false, 0x01, false),
+        case(true, 0x01, false),
+        case(false, 0x10, false),
+        case(true, 0x10, true),
+        case(false, 0x11, true),
+        case(true, 0x11, true),
         )]
         fn sbb_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Word, expected: bool) {
             cpu.state.set_a(0x10);
