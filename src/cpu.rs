@@ -402,6 +402,12 @@ impl Cpu {
         self.fix_static_flags(Reg::A);
         self.state.carry = false;
     }
+
+    fn xra(&mut self, r: Reg) {
+        self.state.a = (self.state.a.val ^ self.reg(r).val).into();
+        self.fix_static_flags(Reg::A);
+        self.state.carry = false;
+    }
 }
 
 /// Register Pair Instructions
@@ -496,6 +502,9 @@ impl Cpu {
             }
             Ana(r) => {
                 self.ana(r)
+            }
+            Xra(r) => {
+                self.xra(r)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1378,6 +1387,50 @@ mod test {
             cpu.state.carry = true;
 
             cpu.ana(Reg::B);
+
+            assert!(!cpu.state.carry);
+
+            cpu.ana(Reg::B);
+
+            assert!(!cpu.state.carry);
+        }
+
+        #[rstest_parametrize(
+        start, r, v, expected,
+        case(0x81, Unwrap("Reg::H"), 0x7e, 0xff),
+        case(0xa6, Unwrap("Reg::L"), 0xa2, 0x04),
+        case(0x5a, Unwrap("Reg::B"), 0xff, 0xa5),
+        )]
+        fn xra_should_perform_logical_xor(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+            cpu.state.set_a(start);
+            RegValue::from((r, v)).apply(&mut cpu);
+
+            cpu.exec(Xra(r));
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest]
+        fn xra_should_update_flags(mut cpu: Cpu) {
+            cpu.state.set_a(0xfe);
+            cpu.state.set_b(0x07);
+            cpu.state.zero = true;
+
+            cpu.xra(Reg::B);
+
+            //0xf9
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
+        }
+
+        #[rstest]
+        fn xra_should_reset_carry_flag(mut cpu: Cpu) {
+            cpu.state.set_a(0xfe);
+            cpu.state.set_b(0xf6);
+            cpu.state.carry = true;
+
+            cpu.xra(Reg::B);
 
             assert!(!cpu.state.carry);
 
