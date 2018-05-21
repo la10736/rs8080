@@ -396,6 +396,12 @@ impl Cpu {
         self.state.carry = self.state.a.carry;
         self.fix_static_flags(Reg::A)
     }
+
+    fn ana(&mut self, r: Reg) {
+        self.state.a = (self.state.a.val & self.reg(r).val).into();
+        self.fix_static_flags(Reg::A);
+        self.state.carry = false;
+    }
 }
 
 /// Register Pair Instructions
@@ -487,6 +493,9 @@ impl Cpu {
             }
             Sbb(r) => {
                 self.sbb(r)
+            }
+            Ana(r) => {
+                self.ana(r)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1331,6 +1340,50 @@ mod test {
             assert!(!cpu.state.zero);
             assert!(cpu.state.sign);
             assert!(cpu.state.parity);
+        }
+
+        #[rstest_parametrize(
+        start, r, v, expected,
+        case(0x81, Unwrap("Reg::D"), 0x7e, 0x00),
+        case(0xa6, Unwrap("Reg::E"), 0xa2, 0xa2),
+        case(0x5a, Unwrap("Reg::M"), 0xff, 0x5a),
+        )]
+        fn ana_should_perform_logical_and(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+            cpu.state.set_a(start);
+            RegValue::from((r, v)).apply(&mut cpu);
+
+            cpu.exec(Ana(r));
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest]
+        fn ana_should_update_flags(mut cpu: Cpu) {
+            cpu.state.set_a(0xfe);
+            cpu.state.set_b(0xf6);
+            cpu.state.zero = true;
+
+            cpu.ana(Reg::B);
+
+            //0xff
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
+        }
+
+        #[rstest]
+        fn ana_should_reset_carry_flag(mut cpu: Cpu) {
+            cpu.state.set_a(0xfe);
+            cpu.state.set_b(0xf6);
+            cpu.state.carry = true;
+
+            cpu.ana(Reg::B);
+
+            assert!(!cpu.state.carry);
+
+            cpu.ana(Reg::B);
+
+            assert!(!cpu.state.carry);
         }
     }
 
