@@ -1,4 +1,4 @@
-#![feature(proc_macro, match_default_bindings)]
+#![feature(proc_macro)]
 #[cfg(test)]
 extern crate rstest;
 
