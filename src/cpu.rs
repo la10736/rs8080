@@ -924,6 +924,13 @@ mod test {
     enum SRegCmd {
         Inr,
         Dcr,
+        Add,
+        Adc,
+        Sub,
+        Sbb,
+        Ana,
+        Xra,
+        Ora,
     }
 
     impl From<(SRegCmd, Reg)> for Instruction {
@@ -932,6 +939,13 @@ mod test {
             match cmd {
                 SRegCmd::Inr => Inr(r),
                 SRegCmd::Dcr => Dcr(r),
+                SRegCmd::Add => Add(r),
+                SRegCmd::Adc => Adc(r),
+                SRegCmd::Sub => Sub(r),
+                SRegCmd::Sbb => Sbb(r),
+                SRegCmd::Ana => Ana(r),
+                SRegCmd::Xra => Xra(r),
+                SRegCmd::Ora => Ora(r),
             }
         }
     }
@@ -1189,20 +1203,6 @@ mod test {
         }
 
         #[rstest]
-        fn add_should_update_flags(mut cpu: Cpu) {
-            cpu.state.set_a(0xfd);
-            cpu.state.set_b(0x02);
-            cpu.state.zero = true;
-
-            cpu.add(Reg::B);
-
-            //0xff
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
-        }
-
-        #[rstest]
         fn add_should_update_the_carry_flag(mut cpu: Cpu) {
             cpu.state.set_a(0xf0);
             cpu.state.set_b(0x13);
@@ -1251,21 +1251,6 @@ mod test {
             assert_eq!(cpu.state.carry, expected);
         }
 
-        #[rstest]
-        fn adc_should_update_flags(mut cpu: Cpu) {
-            cpu.state.set_a(0xfd);
-            cpu.state.set_b(0x01);
-            cpu.state.carry = true;
-            cpu.state.zero = true;
-
-            cpu.adc(Reg::B);
-
-            //0xff
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
-        }
-
         #[rstest_parametrize(
         start, r, v, expected,
         case(0xfd, Unwrap("Reg::C"), 0x04, 0xf9),
@@ -1280,21 +1265,6 @@ mod test {
 
             assert_eq!(cpu.state.a, expected);
         }
-
-        #[rstest]
-        fn sub_should_update_flags(mut cpu: Cpu) {
-            cpu.state.set_a(0x0);
-            cpu.state.set_b(0x01);
-            cpu.state.zero = true;
-
-            cpu.sub(Reg::B);
-
-            //0xff
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
-        }
-
 
         #[rstest]
         fn sub_should_update_carry_flag(mut cpu: Cpu) {
@@ -1345,21 +1315,6 @@ mod test {
             assert_eq!(cpu.state.carry, expected);
         }
 
-        #[rstest]
-        fn sbb_should_update_flags(mut cpu: Cpu) {
-            cpu.state.set_a(0x01);
-            cpu.state.set_b(0x01);
-            cpu.state.carry = true;
-            cpu.state.zero = true;
-
-            cpu.sbb(Reg::B);
-
-            //0xff
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
-        }
-
         #[rstest_parametrize(
         start, r, v, expected,
         case(0x81, Unwrap("Reg::D"), 0x7e, 0x00),
@@ -1375,35 +1330,6 @@ mod test {
             assert_eq!(cpu.state.a, expected);
         }
 
-        #[rstest]
-        fn ana_should_update_flags(mut cpu: Cpu) {
-            cpu.state.set_a(0xfe);
-            cpu.state.set_b(0xf6);
-            cpu.state.zero = true;
-
-            cpu.ana(Reg::B);
-
-            //0xff
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
-        }
-
-        #[rstest]
-        fn ana_should_reset_carry_flag(mut cpu: Cpu) {
-            cpu.state.set_a(0xfe);
-            cpu.state.set_b(0xf6);
-            cpu.state.carry = true;
-
-            cpu.ana(Reg::B);
-
-            assert!(!cpu.state.carry);
-
-            cpu.ana(Reg::B);
-
-            assert!(!cpu.state.carry);
-        }
-
         #[rstest_parametrize(
         start, r, v, expected,
         case(0x81, Unwrap("Reg::H"), 0x7e, 0xff),
@@ -1417,35 +1343,6 @@ mod test {
             cpu.exec(Xra(r));
 
             assert_eq!(cpu.state.a, expected);
-        }
-
-        #[rstest]
-        fn xra_should_update_flags(mut cpu: Cpu) {
-            cpu.state.set_a(0xfe);
-            cpu.state.set_b(0x07);
-            cpu.state.zero = true;
-
-            cpu.xra(Reg::B);
-
-            //0xf9
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
-        }
-
-        #[rstest]
-        fn xra_should_reset_carry_flag(mut cpu: Cpu) {
-            cpu.state.set_a(0xfe);
-            cpu.state.set_b(0xf6);
-            cpu.state.carry = true;
-
-            cpu.xra(Reg::B);
-
-            assert!(!cpu.state.carry);
-
-            cpu.xra(Reg::B);
-
-            assert!(!cpu.state.carry);
         }
 
         #[rstest_parametrize(
@@ -1464,35 +1361,50 @@ mod test {
             assert_eq!(cpu.state.a, expected);
         }
 
-        #[rstest]
-        fn ora_should_update_flags(mut cpu: Cpu) {
-            cpu.state.set_a(0xfe);
-            cpu.state.set_b(0x07);
+        #[rstest_parametrize(
+        op, a, b,
+        case(Unwrap("SRegCmd::Add"), 0xfe, 0x01),
+        case(Unwrap("SRegCmd::Adc"), 0xfe, 0x01),
+        case(Unwrap("SRegCmd::Sub"), 0x01, 0x02),
+        case(Unwrap("SRegCmd::Sbb"), 0x01, 0x02),
+        case(Unwrap("SRegCmd::Ana"), 0xfe, 0xf6),
+        case(Unwrap("SRegCmd::Xra"), 0xfe, 0x07),
+        case(Unwrap("SRegCmd::Ora"), 0xfe, 0x07),
+        )]
+        fn should_update_flags(mut cpu: Cpu, op: SRegCmd, a: Word, b: Word) {
+            cpu.state.set_a(a);
+            cpu.state.set_b(b);
             cpu.state.zero = true;
 
-            cpu.ora(Reg::B);
+            let cmd = (op, Reg::B).into();
+            cpu.exec(cmd);
 
-            //0xff
             assert!(!cpu.state.zero);
             assert!(cpu.state.sign);
             assert!(cpu.state.parity);
         }
 
-        #[rstest]
-        fn ora_should_reset_carry_flag(mut cpu: Cpu) {
-            cpu.state.set_a(0xfe);
-            cpu.state.set_b(0xf6);
+        #[rstest_parametrize(
+        op,
+        case(Unwrap("SRegCmd::Ana")),
+        case(Unwrap("SRegCmd::Xra")),
+        case(Unwrap("SRegCmd::Ora")),
+        )]
+        fn should_reset_carry_flag(mut cpu: Cpu, op: SRegCmd) {
+            cpu.state.set_a(0xae);
+            cpu.state.set_b(0x36);
             cpu.state.carry = true;
 
-            cpu.ora(Reg::B);
+            let cmd = (op, Reg::B).into();
+
+            cpu.exec(cmd);
 
             assert!(!cpu.state.carry);
 
-            cpu.ora(Reg::B);
+            cpu.exec(cmd);
 
             assert!(!cpu.state.carry);
         }
-
     }
 
 
