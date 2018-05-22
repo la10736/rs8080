@@ -408,6 +408,12 @@ impl Cpu {
         self.fix_static_flags(Reg::A);
         self.state.carry = false;
     }
+
+    fn ora(&mut self, r: Reg) {
+        self.state.a = (self.state.a.val | self.reg(r).val).into();
+        self.fix_static_flags(Reg::A);
+        self.state.carry = false;
+    }
 }
 
 /// Register Pair Instructions
@@ -505,6 +511,9 @@ impl Cpu {
             }
             Xra(r) => {
                 self.xra(r)
+            }
+            Ora(r) => {
+                self.ora(r)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1434,10 +1443,56 @@ mod test {
 
             assert!(!cpu.state.carry);
 
-            cpu.ana(Reg::B);
+            cpu.xra(Reg::B);
 
             assert!(!cpu.state.carry);
         }
+
+        #[rstest_parametrize(
+        start, r, v, expected,
+        case(0x81, Unwrap("Reg::H"), 0x7e, 0xff),
+        case(0xa6, Unwrap("Reg::L"), 0xa2, 0xa6),
+        case(0x01, Unwrap("Reg::B"), 0x80, 0x81),
+        case(0x00, Unwrap("Reg::B"), 0x00, 0x00),
+        )]
+        fn ora_should_perform_logical_or(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+            cpu.state.set_a(start);
+            RegValue::from((r, v)).apply(&mut cpu);
+
+            cpu.exec(Ora(r));
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest]
+        fn ora_should_update_flags(mut cpu: Cpu) {
+            cpu.state.set_a(0xfe);
+            cpu.state.set_b(0x07);
+            cpu.state.zero = true;
+
+            cpu.ora(Reg::B);
+
+            //0xff
+            assert!(!cpu.state.zero);
+            assert!(cpu.state.sign);
+            assert!(cpu.state.parity);
+        }
+
+        #[rstest]
+        fn ora_should_reset_carry_flag(mut cpu: Cpu) {
+            cpu.state.set_a(0xfe);
+            cpu.state.set_b(0xf6);
+            cpu.state.carry = true;
+
+            cpu.ora(Reg::B);
+
+            assert!(!cpu.state.carry);
+
+            cpu.ora(Reg::B);
+
+            assert!(!cpu.state.carry);
+        }
+
     }
 
 
