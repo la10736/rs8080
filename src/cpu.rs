@@ -414,6 +414,12 @@ impl Cpu {
         self.fix_static_flags(Reg::A);
         self.state.carry = false;
     }
+
+    fn cmp(&mut self, r: Reg) {
+        let old = self.state.a;
+        self.sub(r);
+        self.state.a = old;
+    }
 }
 
 /// Register Pair Instructions
@@ -514,6 +520,9 @@ impl Cpu {
             }
             Ora(r) => {
                 self.ora(r)
+            }
+            Cmp(r) => {
+                self.cmp(r)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1359,6 +1368,24 @@ mod test {
             cpu.exec(Ora(r));
 
             assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest_parametrize(
+        a, r, v, zero, carry,
+        case(0x34, Unwrap("Reg::B"), 0x34, true, false),
+        case(0x10, Unwrap("Reg::M"), 0x12, false, true),
+        case(0x33, Unwrap("Reg::E"), 0x32, false, false),
+        )]
+        fn cmp_should(mut cpu: Cpu, a: Word, r: Reg, v: Word, zero: bool, carry: bool) {
+            cpu.state.set_a(a);
+            RegValue::from((r, v)).apply(&mut cpu);
+
+            cpu.exec(Cmp(r));
+
+            assert_eq!(cpu.state.zero, zero);
+            assert_eq!(cpu.state.carry, carry);
+            assert_eq!(cpu.state.a, a);
+            assert_eq!(*cpu.reg(r), v);
         }
 
         #[rstest_parametrize(
