@@ -316,6 +316,11 @@ impl Cpu {
 
 /// Carry bit Instructions
 impl Cpu {
+    fn nop(&mut self) {}
+}
+
+/// Carry bit Instructions
+impl Cpu {
     fn cmc(&mut self) {
         self.state.carry = !self.state.carry;
     }
@@ -483,15 +488,11 @@ impl Cpu {
 impl Cpu {
     pub fn exec(&mut self, instruction: Instruction) {
         match instruction {
-            Nop => {}
-            Lxi(rp) => {
-                self.lxi(rp);
+            Cmc => {
+                self.cmc()
             }
-            Inx(rp) => {
-                self.inx(rp)
-            }
-            Dcx(rp) => {
-                self.dcx(rp)
+            Stc => {
+                self.stc()
             }
             Inr(r) => {
                 self.inr(r)
@@ -501,6 +502,12 @@ impl Cpu {
             }
             Cma => {
                 self.cma()
+            }
+            Daa => {
+                unimplemented!("Because nobody use it!")
+            }
+            Nop => {
+                self.nop()
             }
             Mov(f, t) => {
                 self.mov(f, t)
@@ -535,11 +542,15 @@ impl Cpu {
             Cmp(r) => {
                 self.cmp(r)
             }
-            Cmc => {
-                self.cmc()
+            // Continue
+            Lxi(rp) => {
+                self.lxi(rp);
             }
-            Stc => {
-                self.stc()
+            Inx(rp) => {
+                self.inx(rp)
+            }
+            Dcx(rp) => {
+                self.dcx(rp)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
