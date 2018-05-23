@@ -19,6 +19,10 @@ impl RegWord {
     fn is_zero(&self) -> bool { self.val == 0 }
     fn sign_bit(&self) -> bool { (self.val & 0x80) != 0x00 }
     fn parity(&self) -> bool { (self.val.count_ones() % 2) == 0 }
+    fn rotate_left(&mut self) {
+        self.carry = (self.val & 0x80) == 0x80;
+        self.val = self.val.rotate_left(1);
+    }
 }
 
 impl ::std::ops::AddAssign<Word> for RegWord {
@@ -441,8 +445,8 @@ impl Cpu {
 /// Rotate
 impl Cpu {
     fn rlc(&mut self) {
-        self.state.carry = (self.state.a.val & 0x80) == 0x80;
-        self.state.a.val = self.state.a.val.rotate_left(1);
+        self.state.a.rotate_left();
+        self.state.carry = self.state.a.carry;
     }
 }
 
@@ -1505,15 +1509,18 @@ mod test {
     mod rotate_accumulator {
         use super::*;
 
-        #[rstest]
-        fn rlc_should_rotate_accumulator_left(mut cpu: Cpu) {
-            let before = 0xf2;
-            let after = 0xe5;
-            let carry = true;
-
+        #[rstest_parametrize(
+        op, before, after, carry,
+        case(Rlc, 0xf2, 0xe5, true),
+        case(Rlc, 0x00, 0x00, false),
+        case(Rlc, 0xff, 0xff, true),
+        case(Rlc, 0x80, 0x01, true),
+        )]
+        fn should_rotate_accumulator(mut cpu: Cpu, op: Instruction, before: Word,
+                                              after: Word, carry: bool) {
             cpu.state.set_a(before);
 
-            cpu.exec(Rlc);
+            cpu.exec(op);
 
             assert_eq!(cpu.state.a, after);
             assert_eq!(cpu.state.carry, carry);
