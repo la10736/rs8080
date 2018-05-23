@@ -438,6 +438,14 @@ impl Cpu {
     }
 }
 
+/// Rotate
+impl Cpu {
+    fn rlc(&mut self) {
+        self.state.carry = (self.state.a.val & 0x80) == 0x80;
+        self.state.a.val = self.state.a.val.rotate_left(1);
+    }
+}
+
 /// Register Pair Instructions
 impl Cpu {
     fn inx(&mut self, rp: RegPair) {
@@ -542,9 +550,12 @@ impl Cpu {
             Cmp(r) => {
                 self.cmp(r)
             }
+            Rlc => {
+                self.rlc()
+            }
             // Continue
             Lxi(rp) => {
-                self.lxi(rp);
+                self.lxi(rp)
             }
             Inx(rp) => {
                 self.inx(rp)
@@ -1491,6 +1502,23 @@ mod test {
         }
     }
 
+    mod rotate_accumulator {
+        use super::*;
+
+        #[rstest]
+        fn rlc_should_rotate_accumulator_left(mut cpu: Cpu) {
+            let before = 0xf2;
+            let after = 0xe5;
+            let carry = true;
+
+            cpu.state.set_a(before);
+
+            cpu.exec(Rlc);
+
+            assert_eq!(cpu.state.a, after);
+            assert_eq!(cpu.state.carry, carry);
+        }
+    }
 
     #[rstest]
     fn cma(mut cpu: Cpu) {
