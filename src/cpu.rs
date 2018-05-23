@@ -314,6 +314,14 @@ impl Cpu {
     }
 }
 
+/// Carry bit Instructions
+impl Cpu {
+    fn cmc(&mut self) {
+        self.state.carry = !self.state.carry;
+    }
+}
+
+
 /// Immediate Instructions
 impl Cpu {
     fn lxi(&mut self, v: self::RegPairValue) {
@@ -523,6 +531,9 @@ impl Cpu {
             }
             Cmp(r) => {
                 self.cmp(r)
+            }
+            Cmc => {
+                self.cmc()
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1429,6 +1440,23 @@ mod test {
             assert!(!cpu.state.carry);
 
             cpu.exec(cmd);
+
+            assert!(!cpu.state.carry);
+        }
+    }
+
+    mod carry_bit {
+        use super::*;
+
+        #[rstest]
+        fn cmc_should_reverse_carry_bit(mut cpu: Cpu) {
+            cpu.state.carry = false;
+
+            cpu.exec(Cmc);
+
+            assert!(cpu.state.carry);
+
+            cpu.exec(Cmc);
 
             assert!(!cpu.state.carry);
         }
