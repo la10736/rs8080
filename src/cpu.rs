@@ -1,6 +1,6 @@
 use super::{
-    Word, Address,
-    asm::{Instruction, Instruction::*, Reg, RegPair, RegPairValue},
+    Address, asm::{Instruction, Instruction::*, Reg, RegPair, RegPairValue},
+    Word,
 };
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
@@ -319,6 +319,9 @@ impl Cpu {
     fn cmc(&mut self) {
         self.state.carry = !self.state.carry;
     }
+    fn stc(&mut self) {
+        self.state.carry = true;
+    }
 }
 
 
@@ -535,6 +538,9 @@ impl Cpu {
             Cmc => {
                 self.cmc()
             }
+            Stc => {
+                self.stc()
+            }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
         self.state.pc += instruction.length();
@@ -545,6 +551,7 @@ impl Cpu {
 mod test {
     use super::*;
     use rstest::rstest;
+    use rstest::rstest_parametrize;
 
     #[derive(Default)]
     struct StateBuilder {
@@ -612,8 +619,6 @@ mod test {
             self
         }
     }
-
-    use rstest::rstest_parametrize;
 
     fn cpu() -> Cpu {
         CpuBuilder::default()
@@ -1306,7 +1311,7 @@ mod test {
         case(0xfd, true, Unwrap("Reg::C"), 0x04, 0xf8),
         )]
         fn sbb_should_perform_subtraction_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
-                                                          r: Reg, v: Word, expected: Word) {
+                                                             r: Reg, v: Word, expected: Word) {
             cpu.state.set_a(start);
             cpu.state.carry = carry;
             RegValue::from((r, v)).apply(&mut cpu);
@@ -1459,6 +1464,19 @@ mod test {
             cpu.exec(Cmc);
 
             assert!(!cpu.state.carry);
+        }
+
+        #[rstest]
+        fn stc_should_set_carry_bit(mut cpu: Cpu) {
+            cpu.state.carry = false;
+
+            cpu.exec(Stc);
+
+            assert!(cpu.state.carry);
+
+            cpu.exec(Stc);
+
+            assert!(cpu.state.carry);
         }
     }
 
