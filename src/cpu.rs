@@ -23,6 +23,10 @@ impl RegWord {
         self.carry = (self.val & 0x80) == 0x80;
         self.val = self.val.rotate_left(1);
     }
+    fn rotate_right(&mut self) {
+        self.carry = (self.val & 0x01) == 0x01;
+        self.val = self.val.rotate_right(1);
+    }
 }
 
 impl ::std::ops::AddAssign<Word> for RegWord {
@@ -448,6 +452,18 @@ impl Cpu {
         self.state.a.rotate_left();
         self.state.carry = self.state.a.carry;
     }
+    fn rrc(&mut self) {
+        self.state.a.rotate_right();
+        self.state.carry = self.state.a.carry;
+    }
+    fn ral(&mut self) {
+        self.state.a.rotate_left();
+        self.state.carry = self.state.a.carry;
+    }
+    fn rar(&mut self) {
+        self.state.a.rotate_right();
+        self.state.carry = self.state.a.carry;
+    }
 }
 
 /// Register Pair Instructions
@@ -556,6 +572,15 @@ impl Cpu {
             }
             Rlc => {
                 self.rlc()
+            }
+            Rrc => {
+                self.rrc()
+            }
+            Ral => {
+                self.ral()
+            }
+            Rar => {
+                self.rar()
             }
             // Continue
             Lxi(rp) => {
@@ -1515,9 +1540,38 @@ mod test {
         case(Rlc, 0x00, 0x00, false),
         case(Rlc, 0xff, 0xff, true),
         case(Rlc, 0x80, 0x01, true),
+        case(Rrc, 0xf3, 0xf9, true),
+        case(Rrc, 0x00, 0x00, false),
+        case(Rrc, 0xff, 0xff, true),
+        case(Rrc, 0x01, 0x80, true),
         )]
         fn should_rotate_accumulator(mut cpu: Cpu, op: Instruction, before: Word,
                                               after: Word, carry: bool) {
+            cpu.state.set_a(before);
+
+            cpu.exec(op);
+
+            assert_eq!(cpu.state.a, after);
+            assert_eq!(cpu.state.carry, carry);
+        }
+
+        #[rstest_parametrize(
+        op, before, carry_before, after, carry,
+        case(Ral, 0xf2, true, 0xe5, true),
+        case(Ral, 0x00, true, 0x01, false),
+        case(Ral, 0x00, false, 0x00, false),
+        case(Ral, 0xff, true, 0xff, true),
+        case(Ral, 0x80, false, 0x00, true),
+        case(Rar, 0xf3, true, 0xf9, true),
+        case(Rar, 0x00, true, 0x80, false),
+        case(Rar, 0x00, false, 0x00, false),
+        case(Rar, 0xff, true, 0xff, true),
+        case(Rar, 0x01, false, 0x00, true),
+        )]
+        fn should_rotate_accumulator_through_carry_bit(mut cpu: Cpu, op: Instruction,
+                                                       before: Word, carry_before: bool,
+                                                       after: Word, carry: bool) {
+            cpu.state.carry = carry_before;
             cpu.state.set_a(before);
 
             cpu.exec(op);
