@@ -181,6 +181,14 @@ struct State {
     carry: bool,
 }
 
+enum Flags {
+    Sign,
+    Zero,
+    AuxCarry,
+    Parity,
+    Carry,
+}
+
 impl State {
     fn set_a(&mut self, v: Word) {
         self.a = v.into();
@@ -327,10 +335,29 @@ impl Cpu {
         self.state.parity = self.reg(r).parity();
     }
 
-    fn push_reg(&mut self, r: Reg) {
+    fn push_val(&mut self, val: Word) {
         self.state.sp -= 1;
-        let val = self.reg(r).val;
         self.bus.write_byte(self.state.sp.into(), val);
+    }
+
+    fn push_reg(&mut self, r: Reg) {
+        let val = self.reg(r).val;
+        self.push_val(val);
+    }
+
+    fn push_flags(&mut self) {
+        let val = self.pack_flags();
+        self.push_val(val);
+    }
+
+    fn pack_flags(&self) -> Word {
+        let mut pack = 0x02;
+        use self::Flags::*;
+
+        for f in &[Sign, Zero, AuxCarry, Parity, Carry] {
+
+        }
+        0x0
     }
 }
 
@@ -510,7 +537,8 @@ impl Cpu {
                 self.push_reg(Reg::L);
             }
             AF => {
-                unimplemented!("Should save A and flags")
+                self.push_reg(Reg::A);
+                self.push_flags();
             }
         }
     }
@@ -1058,9 +1086,17 @@ mod test {
             assert_eq!(cpu.state.sp, 0x1231)
         }
 
-        #[test]
-        fn push_should_save_accumulator_and_flags() {
-            unimplemented!()
+        #[rstest]
+        fn push_should_save_accumulator_and_flags(mut cpu: Cpu) {
+            cpu.state.set_sp(0x1233);
+            cpu.state.set_a(0xde);
+            cpu.state.carry = true;
+            cpu.state.zero = false;
+
+            cpu.exec(Push(BytePair::AF));
+
+            assert_eq!(cpu.bus.read_byte(0x321c - 1), 0xde);
+            assert_eq!(cpu.bus.read_byte(0x321c - 2), 0x43);
         }
 
         #[test]
