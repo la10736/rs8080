@@ -446,6 +446,12 @@ impl Cpu {
     }
 }
 
+const RIGHT_BIT: u8 = 0;
+const LEFT_BIT: u8 = 7;
+
+const RIGHT_BIT_MASK: Word = 0x1 << RIGHT_BIT;
+const LEFT_BIT_MASK: Word = 0x1 << LEFT_BIT;
+
 /// Rotate
 impl Cpu {
     fn rlc(&mut self) {
@@ -458,11 +464,22 @@ impl Cpu {
     }
     fn ral(&mut self) {
         self.state.a.rotate_left();
-        self.state.carry = self.state.a.carry;
+        self.swap_carry_bit(RIGHT_BIT);
     }
     fn rar(&mut self) {
         self.state.a.rotate_right();
-        self.state.carry = self.state.a.carry;
+        self.swap_carry_bit(LEFT_BIT);
+    }
+
+    fn swap_carry_bit(&mut self, bit: u8) {
+        let bit_mask = 0x1 << bit;
+        let new_carry = (self.state.a.val & bit_mask) == bit_mask;
+        if self.state.carry {
+            self.state.a.val |= bit_mask;
+        } else {
+            self.state.a.val &= !bit_mask;
+        }
+        self.state.carry = new_carry;
     }
 }
 
@@ -600,9 +617,9 @@ impl Cpu {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use rstest::rstest;
     use rstest::rstest_parametrize;
+    use super::*;
 
     #[derive(Default)]
     struct StateBuilder {
@@ -1546,7 +1563,7 @@ mod test {
         case(Rrc, 0x01, 0x80, true),
         )]
         fn should_rotate_accumulator(mut cpu: Cpu, op: Instruction, before: Word,
-                                              after: Word, carry: bool) {
+                                     after: Word, carry: bool) {
             cpu.state.set_a(before);
 
             cpu.exec(op);
