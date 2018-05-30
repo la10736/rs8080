@@ -449,9 +449,6 @@ impl Cpu {
 const RIGHT_BIT: u8 = 0;
 const LEFT_BIT: u8 = 7;
 
-const RIGHT_BIT_MASK: Word = 0x1 << RIGHT_BIT;
-const LEFT_BIT_MASK: Word = 0x1 << LEFT_BIT;
-
 /// Rotate
 impl Cpu {
     fn rlc(&mut self) {
@@ -772,47 +769,6 @@ mod test {
         }
     }
 
-    #[rstest_parametrize(
-    instruction, start, expected,
-    case(Unwrap("Lxi(RegPairValue::BC(0xae,0x02))"), 0x3245, 0x3248),
-    case(Unwrap("Lxi(RegPairValue::DE(0xae,0x02))"), 0x1234, 0x1237),
-    case(Unwrap("Lxi(RegPairValue::HL(0xae,0x02))"), 0x4321, 0x4324),
-    case(Unwrap("Lxi(RegPairValue::SP(0xae02))"), 0x1010, 0x1013),
-    )]
-    fn lxi_should_advance_pc(instruction: Instruction, start: Address, expected: Address) {
-        let mut cpu = CpuBuilder::default()
-            .state(StateBuilder::default()
-                .pc(start)
-                .create()
-            )
-            .create();
-
-        cpu.exec(instruction);
-
-        assert_eq!(cpu.state.pc, expected);
-    }
-
-    #[rstest]
-    fn lxi_bc(mut cpu: Cpu) {
-        cpu.exec(Lxi(RegPairValue::BC(0xae, 0x02)));
-
-        assert_eq!(cpu.state.b, 0xae);
-        assert_eq!(cpu.state.c, 0x02);
-    }
-
-    #[rstest_parametrize(
-    rp, query, expected,
-    case(Unwrap("RegPairValue::BC(0xe4, 0xf1)"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xe4, 0xf1)")),
-    case(Unwrap("RegPairValue::DE(0x20, 0xb1)"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xb1)")),
-    case(Unwrap("RegPairValue::HL(0x02, 0xae)"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x02, 0xae)")),
-    case(Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
-    )]
-    fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
-        cpu.exec(Lxi(rp));
-
-        assert_eq!(query.ask(&cpu), expected);
-    }
-
     trait ApplyState {
         fn apply(&self, cpu: &mut Cpu);
     }
@@ -839,72 +795,6 @@ mod test {
                 }
             }
         }
-    }
-
-    #[rstest_parametrize(
-    rp, query, expected,
-    case(Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x10, 0xa7)")),
-    case(Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xe7)")),
-    case(Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0xef)")),
-    case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1235")),
-    )]
-    fn inx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
-        cpu.exec(Inx(rp));
-
-        assert_eq!(query.ask(&cpu), expected);
-    }
-
-    #[rstest_parametrize(
-    init, rp, query, expected,
-    case(Unwrap("RegPairValue::BC(0x00, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x01, 0x00)")),
-    case(Unwrap("RegPairValue::BC(0xff, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x00, 0x00)")),
-    case(Unwrap("RegPairValue::DE(0x12, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x13, 0x00)")),
-    case(Unwrap("RegPairValue::DE(0xff, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x00, 0x00)")),
-    case(Unwrap("RegPairValue::HL(0xae, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xaf, 0x00)")),
-    case(Unwrap("RegPairValue::HL(0xff, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x00, 0x00)")),
-    case(Unwrap("RegPairValue::SP(0xffff)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0x0000),
-    )]
-    fn inx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
-        where R: QueryResult, Q: CpuQuery<Result=R>
-    {
-        init.apply(&mut cpu);
-
-        cpu.exec(Inx(rp));
-
-        assert_eq!(query.ask(&cpu), expected);
-    }
-
-    #[rstest_parametrize(
-    rp, query, expected,
-    case(Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x10, 0xa5)")),
-    case(Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xe5)")),
-    case(Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0xed)")),
-    case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1233")),
-    )]
-    fn dcx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
-        cpu.exec(Dcx(rp));
-
-        assert_eq!(query.ask(&cpu), expected);
-    }
-
-    #[rstest_parametrize(
-    init, rp, query, expected,
-    case(Unwrap("RegPairValue::BC(0xff, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xfe, 0xff)")),
-    case(Unwrap("RegPairValue::BC(0x00, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xff, 0xff)")),
-    case(Unwrap("RegPairValue::DE(0x12, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x11, 0xff)")),
-    case(Unwrap("RegPairValue::DE(0x00, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0xff, 0xff)")),
-    case(Unwrap("RegPairValue::HL(0xae, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xad, 0xff)")),
-    case(Unwrap("RegPairValue::HL(0x00, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xff, 0xff)")),
-    case(Unwrap("RegPairValue::SP(0x0000)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0xffff),
-    )]
-    fn dcx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
-        where R: QueryResult, Q: CpuQuery<Result=R>
-    {
-        init.apply(&mut cpu);
-
-        cpu.exec(Dcx(rp));
-
-        assert_eq!(query.ask(&cpu), expected);
     }
 
     #[derive(Copy, Clone)]
@@ -1040,6 +930,76 @@ mod test {
                 SRegCmd::Xra => Xra(r),
                 SRegCmd::Ora => Ora(r),
             }
+        }
+    }
+
+    mod pair_register {
+        use super::*;
+
+        #[rstest_parametrize(
+        rp, query, expected,
+        case(Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x10, 0xa7)")),
+        case(Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xe7)")),
+        case(Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0xef)")),
+        case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1235")),
+        )]
+        fn inx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
+            cpu.exec(Inx(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
+        #[rstest_parametrize(
+        init, rp, query, expected,
+        case(Unwrap("RegPairValue::BC(0x00, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x01, 0x00)")),
+        case(Unwrap("RegPairValue::BC(0xff, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::DE(0x12, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x13, 0x00)")),
+        case(Unwrap("RegPairValue::DE(0xff, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::HL(0xae, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xaf, 0x00)")),
+        case(Unwrap("RegPairValue::HL(0xff, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::SP(0xffff)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0x0000),
+        )]
+        fn inx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
+            where R: QueryResult, Q: CpuQuery<Result=R>
+        {
+            init.apply(&mut cpu);
+
+            cpu.exec(Inx(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
+        #[rstest_parametrize(
+        rp, query, expected,
+        case(Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x10, 0xa5)")),
+        case(Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xe5)")),
+        case(Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0xed)")),
+        case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1233")),
+        )]
+        fn dcx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
+            cpu.exec(Dcx(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
+        #[rstest_parametrize(
+        init, rp, query, expected,
+        case(Unwrap("RegPairValue::BC(0xff, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xfe, 0xff)")),
+        case(Unwrap("RegPairValue::BC(0x00, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::DE(0x12, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x11, 0xff)")),
+        case(Unwrap("RegPairValue::DE(0x00, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::HL(0xae, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xad, 0xff)")),
+        case(Unwrap("RegPairValue::HL(0x00, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::SP(0x0000)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0xffff),
+        )]
+        fn dcx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
+            where R: QueryResult, Q: CpuQuery<Result=R>
+        {
+            init.apply(&mut cpu);
+
+            cpu.exec(Dcx(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
         }
     }
 
@@ -1596,6 +1556,48 @@ mod test {
             assert_eq!(cpu.state.a, after);
             assert_eq!(cpu.state.carry, carry);
         }
+    }
+
+
+    #[rstest_parametrize(
+    instruction, start, expected,
+    case(Unwrap("Lxi(RegPairValue::BC(0xae,0x02))"), 0x3245, 0x3248),
+    case(Unwrap("Lxi(RegPairValue::DE(0xae,0x02))"), 0x1234, 0x1237),
+    case(Unwrap("Lxi(RegPairValue::HL(0xae,0x02))"), 0x4321, 0x4324),
+    case(Unwrap("Lxi(RegPairValue::SP(0xae02))"), 0x1010, 0x1013),
+    )]
+    fn lxi_should_advance_pc(instruction: Instruction, start: Address, expected: Address) {
+        let mut cpu = CpuBuilder::default()
+            .state(StateBuilder::default()
+                .pc(start)
+                .create()
+            )
+            .create();
+
+        cpu.exec(instruction);
+
+        assert_eq!(cpu.state.pc, expected);
+    }
+
+    #[rstest]
+    fn lxi_bc(mut cpu: Cpu) {
+        cpu.exec(Lxi(RegPairValue::BC(0xae, 0x02)));
+
+        assert_eq!(cpu.state.b, 0xae);
+        assert_eq!(cpu.state.c, 0x02);
+    }
+
+    #[rstest_parametrize(
+    rp, query, expected,
+    case(Unwrap("RegPairValue::BC(0xe4, 0xf1)"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xe4, 0xf1)")),
+    case(Unwrap("RegPairValue::DE(0x20, 0xb1)"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xb1)")),
+    case(Unwrap("RegPairValue::HL(0x02, 0xae)"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x02, 0xae)")),
+    case(Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
+    )]
+    fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
+        cpu.exec(Lxi(rp));
+
+        assert_eq!(query.ask(&cpu), expected);
     }
 
     #[rstest]
