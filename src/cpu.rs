@@ -1,5 +1,5 @@
 use super::{
-    Address, asm::{Instruction, Instruction::*, Reg, RegPair, RegPairValue},
+    Address, asm::{BytePair, Instruction, Instruction::*, Reg, RegPair, RegPairValue},
     Word,
 };
 
@@ -86,6 +86,12 @@ impl Into<Word> for RegWord {
 impl ::std::ops::AddAssign<Address> for RegAddress {
     fn add_assign(&mut self, rhs: Address) {
         self.0 += rhs;
+    }
+}
+
+impl ::std::ops::SubAssign<Address> for RegAddress {
+    fn sub_assign(&mut self, rhs: Address) {
+        self.0 -= rhs;
     }
 }
 
@@ -320,6 +326,12 @@ impl Cpu {
         self.state.sign = self.reg(r).sign_bit();
         self.state.parity = self.reg(r).parity();
     }
+
+    fn push_reg(&mut self, r: Reg) {
+        self.state.sp -= 1;
+        let val = self.reg(r).val;
+        self.bus.write_byte(self.state.sp.into(), val);
+    }
 }
 
 /// Carry bit Instructions
@@ -482,6 +494,27 @@ impl Cpu {
 
 /// Register Pair Instructions
 impl Cpu {
+    fn push(&mut self, bp: BytePair) {
+        use self::BytePair::*;
+        match bp {
+            BC => {
+                self.push_reg(Reg::B);
+                self.push_reg(Reg::C);
+            }
+            DE => {
+                self.push_reg(Reg::D);
+                self.push_reg(Reg::E);
+            }
+            HL => {
+                self.push_reg(Reg::H);
+                self.push_reg(Reg::L);
+            }
+            AF => {
+                unimplemented!("Should save A and flags")
+            }
+        }
+    }
+
     fn inx(&mut self, rp: RegPair) {
         use self::RegPair::*;
         match rp {
@@ -596,15 +629,18 @@ impl Cpu {
             Rar => {
                 self.rar()
             }
-            // Continue
-            Lxi(rp) => {
-                self.lxi(rp)
+            Push(bp) => {
+                self.push(bp)
             }
+            // Continue
             Inx(rp) => {
                 self.inx(rp)
             }
             Dcx(rp) => {
                 self.dcx(rp)
+            }
+            Lxi(rp) => {
+                self.lxi(rp)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1000,6 +1036,36 @@ mod test {
             cpu.exec(Dcx(rp));
 
             assert_eq!(query.ask(&cpu), expected);
+        }
+
+        #[rstest]
+        fn push_should_put_register_pair_on_the_stack(mut cpu: Cpu) {
+            cpu.set_de(0x8f9d);
+            cpu.state.set_sp(0x321c);
+
+            cpu.exec(Push(BytePair::DE));
+
+            assert_eq!(cpu.bus.read_byte(0x321c - 1), 0x8f);
+            assert_eq!(cpu.bus.read_byte(0x321c - 2), 0x9d);
+        }
+
+        #[rstest]
+        fn push_should_decrease_stack_by_two(mut cpu: Cpu) {
+            cpu.state.set_sp(0x1233);
+
+            cpu.exec(Push(BytePair::BC));
+
+            assert_eq!(cpu.state.sp, 0x1231)
+        }
+
+        #[test]
+        fn push_should_save_accumulator_and_flags() {
+            unimplemented!()
+        }
+
+        #[test]
+        fn push_should_store_flags_correctly() {
+            unimplemented!()
         }
     }
 
