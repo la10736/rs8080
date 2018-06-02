@@ -175,13 +175,11 @@ struct State {
     pc: RegAddress,
     sp: RegAddress,
 
-    zero: bool,
-    sign: bool,
-    parity: bool,
-    carry: bool,
+    flags: Word,
 }
 
-enum Flags {
+#[derive(Copy, Clone)]
+enum Flag {
     Sign,
     Zero,
     AuxCarry,
@@ -223,6 +221,58 @@ impl State {
     fn set_sp<A: Into<RegAddress>>(&mut self, v: A) -> &mut Self {
         self.sp = v.into();
         self
+    }
+
+}
+
+/// Flags stuff
+impl State {
+    fn flag(&self, f: Flag) -> bool {
+        (self.flags & 0x1 << self.flag_bit(f)) != 0
+    }
+
+    fn val_flag(&mut self, f: Flag, val: bool) {
+        if val {
+            self.flags |= 0x1 << self.flag_bit(f)
+        } else {
+            self.flags &= !(0x1 << self.flag_bit(f))
+        }
+    }
+
+    fn set_flag(&mut self, f: Flag) {
+        self.val_flag(f, true)
+    }
+
+    fn clear_flag(&mut self, f: Flag) {
+        self.val_flag(f, false)
+    }
+
+    fn toggle_flag(&mut self, f: Flag) {
+        let toggled = !self.flag(f);
+        self.val_flag(f, toggled)
+    }
+
+    fn flag_bit(&self, f: Flag) -> u8 {
+        use self::Flag::*;
+        match f {
+            Sign => 7,
+            Zero => 6,
+            AuxCarry => 4,
+            Parity => 2,
+            Carry => 0,
+        }
+    }
+
+    fn pack_flags(&self) -> Word {
+        let mut pack = 0x02;
+        use self::Flag::*;
+
+        for f in [Sign, Zero, AuxCarry, Parity, Carry].iter().cloned() {
+            if self.flag(f) {
+                pack |= 0x1 << self.flag_bit(f);
+            }
+        }
+        pack
     }
 }
 
@@ -330,9 +380,15 @@ impl Cpu {
     }
 
     fn fix_static_flags(&mut self, r: Reg) {
-        self.state.zero = self.reg(r).is_zero();
-        self.state.sign = self.reg(r).sign_bit();
-        self.state.parity = self.reg(r).parity();
+        use self::Flag::*;
+
+        for (f, v) in &[
+            (Zero, self.reg(r).is_zero()),
+            (Sign, self.reg(r).sign_bit()),
+            (Parity, self.reg(r).parity())
+        ] {
+            self.state.val_flag(*f, *v)
+        }
     }
 
     fn push_val(&mut self, val: Word) {
@@ -351,13 +407,7 @@ impl Cpu {
     }
 
     fn pack_flags(&self) -> Word {
-        let mut pack = 0x02;
-        use self::Flags::*;
-
-        for f in &[Sign, Zero, AuxCarry, Parity, Carry] {
-
-        }
-        0x0
+        self.state.pack_flags()
     }
 }
 
@@ -369,10 +419,10 @@ impl Cpu {
 /// Carry bit Instructions
 impl Cpu {
     fn cmc(&mut self) {
-        self.state.carry = !self.state.carry;
+        self.state.toggle_flag(Flag::Carry);
     }
     fn stc(&mut self) {
-        self.state.carry = true;
+        self.state.set_flag(Flag::Carry);
     }
 }
 
@@ -434,48 +484,69 @@ impl Cpu {
 
 /// Accumulator
 impl Cpu {
+    fn carry(&self) -> bool {
+        self.state.flag(Flag::Carry)
+    }
+
+    fn carry_clear(&mut self) {
+        self.set_carry_state(false)
+    }
+
+    fn carry_set(&mut self) {
+        self.set_carry_state(true)
+    }
+
+    fn set_carry_state(&mut self, state: bool) {
+        self.state.val_flag(Flag::Carry, state)
+    }
+
+    fn store_a_carry(&mut self) {
+        let val = self.state.a.carry;
+        self.set_carry_state(val)
+    }
+
     fn add(&mut self, r: Reg) {
         self.state.a += self.reg(r).val;
-        self.state.carry = self.state.a.carry;
+        self.store_a_carry();
         self.fix_static_flags(Reg::A)
     }
 
     fn adc(&mut self, r: Reg) {
         let v = self.reg(r).val;
-        self.state.a += if self.state.carry { v + 1 } else { v };
-        self.state.carry = self.state.a.carry;
+        self.state.a += if self.carry() { v + 1 } else { v };
+        self.store_a_carry();
         self.fix_static_flags(Reg::A)
     }
 
     fn sub(&mut self, r: Reg) {
         self.state.a -= self.reg(r).val;
-        self.state.carry = self.state.a.carry;
+        self.store_a_carry();
         self.fix_static_flags(Reg::A)
     }
 
     fn sbb(&mut self, r: Reg) {
         let v = self.reg(r).val;
-        self.state.a -= if self.state.carry { v + 1 } else { v };
-        self.state.carry = self.state.a.carry;
+        self.state.a -= if self.carry() { v + 1 } else { v };
+        self.store_a_carry();
         self.fix_static_flags(Reg::A)
     }
 
     fn ana(&mut self, r: Reg) {
         self.state.a = (self.state.a.val & self.reg(r).val).into();
         self.fix_static_flags(Reg::A);
-        self.state.carry = false;
+        self.carry_clear();
     }
 
     fn xra(&mut self, r: Reg) {
         self.state.a = (self.state.a.val ^ self.reg(r).val).into();
         self.fix_static_flags(Reg::A);
-        self.state.carry = false;
+        self.carry_clear();
     }
 
     fn ora(&mut self, r: Reg) {
         self.state.a = (self.state.a.val | self.reg(r).val).into();
         self.fix_static_flags(Reg::A);
-        self.state.carry = false;
+        self.carry_clear();
     }
 
     fn cmp(&mut self, r: Reg) {
@@ -492,11 +563,11 @@ const LEFT_BIT: u8 = 7;
 impl Cpu {
     fn rlc(&mut self) {
         self.state.a.rotate_left();
-        self.state.carry = self.state.a.carry;
+        self.store_a_carry();
     }
     fn rrc(&mut self) {
         self.state.a.rotate_right();
-        self.state.carry = self.state.a.carry;
+        self.store_a_carry();
     }
     fn ral(&mut self) {
         self.state.a.rotate_left();
@@ -510,12 +581,12 @@ impl Cpu {
     fn swap_carry_bit(&mut self, bit: u8) {
         let bit_mask = 0x1 << bit;
         let new_carry = (self.state.a.val & bit_mask) == bit_mask;
-        if self.state.carry {
+        if self.carry() {
             self.state.a.val |= bit_mask;
         } else {
             self.state.a.val &= !bit_mask;
         }
-        self.state.carry = new_carry;
+        self.set_carry_state(new_carry)
     }
 }
 
@@ -681,6 +752,7 @@ mod test {
     use rstest::rstest;
     use rstest::rstest_parametrize;
     use super::*;
+    use self::Flag::*;
 
     #[derive(Default)]
     struct StateBuilder {
@@ -889,23 +961,17 @@ mod test {
         }
     }
 
-    #[derive(Copy, Clone)]
-    enum StateFlag {
-        Zero,
-        Sign,
-        Parity,
-    }
-
-    impl CpuQuery for StateFlag {
+    impl CpuQuery for Flag {
         type Result = bool;
 
         fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
-            use self::StateFlag::*;
-            match *self {
-                Zero => cpu.state.zero,
-                Sign => cpu.state.sign,
-                Parity => cpu.state.parity,
-            }
+            cpu.state.flag(*self)
+        }
+    }
+
+    impl ApplyState for Flag {
+        fn apply(&self, cpu: &mut Cpu) {
+            cpu.state.set_flag(*self)
         }
     }
 
@@ -1088,10 +1154,11 @@ mod test {
 
         #[rstest]
         fn push_should_save_accumulator_and_flags(mut cpu: Cpu) {
-            cpu.state.set_sp(0x1233);
+            let sp = 0x321c;
+            cpu.state.set_sp(sp);
             cpu.state.set_a(0xde);
-            cpu.state.carry = true;
-            cpu.state.zero = false;
+            cpu.state.set_flag(Carry);
+            cpu.state.set_flag(Zero);
 
             cpu.exec(Push(BytePair::AF));
 
@@ -1099,29 +1166,29 @@ mod test {
             assert_eq!(cpu.bus.read_byte(0x321c - 2), 0x43);
         }
 
-        #[test]
-        fn push_should_store_flags_correctly() {
-            unimplemented!()
-        }
+//        #[test]
+//        fn push_should_store_flags_correctly() {
+//            unimplemented!()
+//        }
     }
 
     #[rstest_parametrize(
     init, query, expected,
-    case(Unwrap("RegValue::B(0x00)"), Unwrap("StateFlag::Zero"), true),
-    case(Unwrap("RegValue::B(0x12)"), Unwrap("StateFlag::Zero"), false),
-    case(Unwrap("RegValue::B(0xff)"), Unwrap("StateFlag::Zero"), false),
-    case(Unwrap("RegValue::A(0x80)"), Unwrap("StateFlag::Sign"), true),
-    case(Unwrap("RegValue::A(0xA3)"), Unwrap("StateFlag::Sign"), true),
-    case(Unwrap("RegValue::A(0xff)"), Unwrap("StateFlag::Sign"), true),
-    case(Unwrap("RegValue::A(0x00)"), Unwrap("StateFlag::Sign"), false),
-    case(Unwrap("RegValue::A(0x12)"), Unwrap("StateFlag::Sign"), false),
-    case(Unwrap("RegValue::A(0x7f)"), Unwrap("StateFlag::Sign"), false),
-    case(Unwrap("RegValue::D(0x00)"), Unwrap("StateFlag::Parity"), true),
-    case(Unwrap("RegValue::D(0x03)"), Unwrap("StateFlag::Parity"), true),
-    case(Unwrap("RegValue::D(0xff)"), Unwrap("StateFlag::Parity"), true),
-    case(Unwrap("RegValue::D(0x01)"), Unwrap("StateFlag::Parity"), false),
-    case(Unwrap("RegValue::D(0x1f)"), Unwrap("StateFlag::Parity"), false),
-    case(Unwrap("RegValue::D(0x37)"), Unwrap("StateFlag::Parity"), false),
+    case(Unwrap("RegValue::B(0x00)"), Unwrap("Flag::Zero"), true),
+    case(Unwrap("RegValue::B(0x12)"), Unwrap("Flag::Zero"), false),
+    case(Unwrap("RegValue::B(0xff)"), Unwrap("Flag::Zero"), false),
+    case(Unwrap("RegValue::A(0x80)"), Unwrap("Flag::Sign"), true),
+    case(Unwrap("RegValue::A(0xA3)"), Unwrap("Flag::Sign"), true),
+    case(Unwrap("RegValue::A(0xff)"), Unwrap("Flag::Sign"), true),
+    case(Unwrap("RegValue::A(0x00)"), Unwrap("Flag::Sign"), false),
+    case(Unwrap("RegValue::A(0x12)"), Unwrap("Flag::Sign"), false),
+    case(Unwrap("RegValue::A(0x7f)"), Unwrap("Flag::Sign"), false),
+    case(Unwrap("RegValue::D(0x00)"), Unwrap("Flag::Parity"), true),
+    case(Unwrap("RegValue::D(0x03)"), Unwrap("Flag::Parity"), true),
+    case(Unwrap("RegValue::D(0xff)"), Unwrap("Flag::Parity"), true),
+    case(Unwrap("RegValue::D(0x01)"), Unwrap("Flag::Parity"), false),
+    case(Unwrap("RegValue::D(0x1f)"), Unwrap("Flag::Parity"), false),
+    case(Unwrap("RegValue::D(0x37)"), Unwrap("Flag::Parity"), false),
     )]
     fn static_flags<Q, R>(mut cpu: Cpu, init: RegValue, query: Q, expected: R)
         where R: QueryResult, Q: CpuQuery<Result=R>
@@ -1165,23 +1232,23 @@ mod test {
             cpu.inr(Reg::B);
 
             //0xfe
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(!cpu.state.parity);
+            assert!(!cpu.state.flag(Zero));
+            assert!(cpu.state.flag(Sign));
+            assert!(!cpu.state.flag(Parity));
 
             cpu.inr(Reg::B);
 
             //0xff
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
+            assert!(!cpu.state.flag(Zero));
+            assert!(cpu.state.flag(Sign));
+            assert!(cpu.state.flag(Parity));
 
             cpu.inr(Reg::B);
 
             //0x00
-            assert!(cpu.state.zero);
-            assert!(!cpu.state.sign);
-            assert!(cpu.state.parity);
+            assert!(cpu.state.flag(Zero));
+            assert!(!cpu.state.flag(Sign));
+            assert!(cpu.state.flag(Parity));
         }
 
         #[rstest]
@@ -1190,13 +1257,13 @@ mod test {
 
             cpu.inr(Reg::B);
 
-            assert!(!cpu.state.carry);
+            assert!(!cpu.carry());
 
-            cpu.state.carry = true;
+            cpu.carry_set();
 
             cpu.inr(Reg::B);
 
-            assert!(cpu.state.carry);
+            assert!(cpu.carry());
         }
 
         #[rstest]
@@ -1217,23 +1284,23 @@ mod test {
             cpu.dcr(Reg::B);
 
             //0x01
-            assert!(!cpu.state.zero);
-            assert!(!cpu.state.sign);
-            assert!(!cpu.state.parity);
+            assert!(!cpu.state.flag(Zero));
+            assert!(!cpu.state.flag(Sign));
+            assert!(!cpu.state.flag(Parity));
 
             cpu.dcr(Reg::B);
 
             //0x00
-            assert!(cpu.state.zero);
-            assert!(!cpu.state.sign);
-            assert!(cpu.state.parity);
+            assert!(cpu.state.flag(Zero));
+            assert!(!cpu.state.flag(Sign));
+            assert!(cpu.state.flag(Parity));
 
             cpu.dcr(Reg::B);
 
             //0xff
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
+            assert!(!cpu.state.flag(Zero));
+            assert!(cpu.state.flag(Sign));
+            assert!(cpu.state.flag(Parity));
         }
 
         #[rstest]
@@ -1242,13 +1309,13 @@ mod test {
 
             cpu.dcr(Reg::B);
 
-            assert!(!cpu.state.carry);
+            assert!(!cpu.carry());
 
-            cpu.state.carry = true;
+            cpu.carry_set();
 
             cpu.dcr(Reg::B);
 
-            assert!(cpu.state.carry);
+            assert!(cpu.carry());
         }
 
         #[rstest_parametrize(
@@ -1364,7 +1431,7 @@ mod test {
 
             cpu.add(Reg::B);
 
-            assert!(cpu.state.carry);
+            assert!(cpu.carry());
         }
 
         #[rstest_parametrize(
@@ -1379,7 +1446,7 @@ mod test {
         fn adc_should_perform_addition_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
                                                           r: Reg, v: Word, expected: Word) {
             cpu.state.set_a(start);
-            cpu.state.carry = carry;
+            cpu.set_carry_state(carry);
             RegValue::from((r, v)).apply(&mut cpu);
 
             cpu.exec(Adc(r));
@@ -1398,12 +1465,12 @@ mod test {
         )]
         fn adc_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Word, expected: bool) {
             cpu.state.set_a(0xf0);
-            cpu.state.carry = carry;
+            cpu.set_carry_state(carry);
             cpu.state.set_b(v);
 
             cpu.exec(Adc(Reg::B));
 
-            assert_eq!(cpu.state.carry, expected);
+            assert_eq!(cpu.carry(), expected);
         }
 
         #[rstest_parametrize(
@@ -1428,7 +1495,7 @@ mod test {
 
             cpu.sub(Reg::B);
 
-            assert!(cpu.state.carry);
+            assert!(cpu.carry());
         }
 
         #[rstest_parametrize(
@@ -1443,7 +1510,7 @@ mod test {
         fn sbb_should_perform_subtraction_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
                                                              r: Reg, v: Word, expected: Word) {
             cpu.state.set_a(start);
-            cpu.state.carry = carry;
+            cpu.set_carry_state(carry);
             RegValue::from((r, v)).apply(&mut cpu);
 
             cpu.sbb(r);
@@ -1462,12 +1529,12 @@ mod test {
         )]
         fn sbb_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Word, expected: bool) {
             cpu.state.set_a(0x10);
-            cpu.state.carry = carry;
+            cpu.set_carry_state(carry);
             cpu.state.set_b(v);
 
             cpu.sbb(Reg::B);
 
-            assert_eq!(cpu.state.carry, expected);
+            assert_eq!(cpu.carry(), expected);
         }
 
         #[rstest_parametrize(
@@ -1528,8 +1595,8 @@ mod test {
 
             cpu.exec(Cmp(r));
 
-            assert_eq!(cpu.state.zero, zero);
-            assert_eq!(cpu.state.carry, carry);
+            assert_eq!(cpu.state.flag(Zero), zero);
+            assert_eq!(cpu.carry(), carry);
             assert_eq!(cpu.state.a, a);
             assert_eq!(*cpu.reg(r), v);
         }
@@ -1547,14 +1614,14 @@ mod test {
         fn should_update_flags(mut cpu: Cpu, op: SRegCmd, a: Word, b: Word) {
             cpu.state.set_a(a);
             cpu.state.set_b(b);
-            cpu.state.zero = true;
+            cpu.state.set_flag(Zero);
 
             let cmd = (op, Reg::B).into();
             cpu.exec(cmd);
 
-            assert!(!cpu.state.zero);
-            assert!(cpu.state.sign);
-            assert!(cpu.state.parity);
+            assert!(!cpu.state.flag(Zero));
+            assert!(cpu.state.flag(Sign));
+            assert!(cpu.state.flag(Parity));
         }
 
         #[rstest_parametrize(
@@ -1566,17 +1633,17 @@ mod test {
         fn should_reset_carry_flag(mut cpu: Cpu, op: SRegCmd) {
             cpu.state.set_a(0xae);
             cpu.state.set_b(0x36);
-            cpu.state.carry = true;
+            cpu.carry_set();
 
             let cmd = (op, Reg::B).into();
 
             cpu.exec(cmd);
 
-            assert!(!cpu.state.carry);
+            assert!(!cpu.carry());
 
             cpu.exec(cmd);
 
-            assert!(!cpu.state.carry);
+            assert!(!cpu.carry());
         }
     }
 
@@ -1585,28 +1652,28 @@ mod test {
 
         #[rstest]
         fn cmc_should_reverse_carry_bit(mut cpu: Cpu) {
-            cpu.state.carry = false;
+            cpu.carry_clear();
 
             cpu.exec(Cmc);
 
-            assert!(cpu.state.carry);
+            assert!(cpu.carry());
 
             cpu.exec(Cmc);
 
-            assert!(!cpu.state.carry);
+            assert!(!cpu.carry());
         }
 
         #[rstest]
         fn stc_should_set_carry_bit(mut cpu: Cpu) {
-            cpu.state.carry = false;
+            cpu.carry_clear();
 
             cpu.exec(Stc);
 
-            assert!(cpu.state.carry);
+            assert!(cpu.carry());
 
             cpu.exec(Stc);
 
-            assert!(cpu.state.carry);
+            assert!(cpu.carry());
         }
     }
 
@@ -1631,7 +1698,7 @@ mod test {
             cpu.exec(op);
 
             assert_eq!(cpu.state.a, after);
-            assert_eq!(cpu.state.carry, carry);
+            assert_eq!(cpu.carry(), carry);
         }
 
         #[rstest_parametrize(
@@ -1650,13 +1717,13 @@ mod test {
         fn should_rotate_accumulator_through_carry_bit(mut cpu: Cpu, op: Instruction,
                                                        before: Word, carry_before: bool,
                                                        after: Word, carry: bool) {
-            cpu.state.carry = carry_before;
+            cpu.set_carry_state(carry_before);
             cpu.state.set_a(before);
 
             cpu.exec(op);
 
             assert_eq!(cpu.state.a, after);
-            assert_eq!(cpu.state.carry, carry);
+            assert_eq!(cpu.carry(), carry);
         }
     }
 
@@ -1717,17 +1784,17 @@ mod test {
 
         cpu.exec(Cma);
 
-        assert!(!cpu.state.zero)
+        assert!(!cpu.state.flag(Zero))
     }
 
     #[rstest]
     fn cma_should_not_change_flags(mut cpu: Cpu) {
         cpu.state.set_a(0xff);
-        cpu.state.zero = true;
+        cpu.state.set_flag(Zero);
 
         cpu.exec(Cma);
 
-        assert!(cpu.state.zero)
+        assert!(cpu.state.flag(Zero))
     }
 
     #[rstest]
