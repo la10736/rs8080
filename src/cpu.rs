@@ -191,38 +191,30 @@ impl State {
     fn set_a(&mut self, v: Word) {
         self.a = v.into();
     }
-
     fn set_b(&mut self, v: Word) {
         self.b = v.into();
     }
-
     fn set_c(&mut self, v: Word) {
         self.c = v.into();
     }
     fn set_d(&mut self, v: Word) {
         self.d = v.into();
     }
-
     fn set_e(&mut self, v: Word) {
         self.e = v.into();
     }
     fn set_h(&mut self, v: Word) {
         self.h = v.into();
     }
-
     fn set_l(&mut self, v: Word) {
         self.l = v.into();
     }
-
     fn set_pc(&mut self, v: Address) {
         self.pc = v.into();
     }
-
-    fn set_sp<A: Into<RegAddress>>(&mut self, v: A) -> &mut Self {
+    fn set_sp<A: Into<RegAddress>>(&mut self, v: A) {
         self.sp = v.into();
-        self
     }
-
 }
 
 /// Flags stuff
