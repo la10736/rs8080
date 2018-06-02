@@ -415,12 +415,8 @@ impl Cpu {
     }
 
     fn push_flags(&mut self) {
-        let val = self.pack_flags();
+        let val = self.state.pack_flags();
         self.push_val(val);
-    }
-
-    fn pack_flags(&self) -> Word {
-        self.state.pack_flags()
     }
 }
 
@@ -1182,10 +1178,26 @@ mod test {
             assert_eq!(cpu.bus.read_byte(0x321c - 2), 0x43);
         }
 
-//        #[test]
-//        fn push_should_store_flags_correctly() {
-//            unimplemented!()
-//        }
+        impl ApplyState for () {
+            fn apply(&self, cpu: &mut Cpu) {}
+        }
+
+        #[rstest_parametrize(
+        init, expected,
+        case(Unwrap("()"), 0x02),
+        case(Sign, 0x82),
+        case(Zero, 0x42),
+        case(AuxCarry, 0x12),
+        case(Parity, 0x06),
+        case(Carry, 0x03),
+        )]
+        fn push_should_store_flags_correctly<I: ApplyState>(mut cpu: Cpu, init: I, expected: Word) {
+            init.apply(&mut cpu);
+
+            let flags = cpu.state.pack_flags();
+
+            assert_eq!(flags, expected);
+        }
     }
 
     #[rstest_parametrize(
