@@ -27,6 +27,17 @@ impl RegWord {
         self.carry = (self.val & 0x01) == 0x01;
         self.val = self.val.rotate_right(1);
     }
+    fn update_flags(&self, flags: &mut Flags) {
+        use self::Flag::*;
+
+        for (f, v) in &[
+            (Zero, self.is_zero()),
+            (Sign, self.sign_bit()),
+            (Parity, self.parity())
+        ] {
+            flags.val(*f, *v)
+        }
+    }
 }
 
 impl ::std::ops::AddAssign<Word> for RegWord {
@@ -164,6 +175,63 @@ impl Into<(Word, Word)> for RegAddress {
 }
 
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
+struct Flags (Word);
+
+impl Flags {
+    fn mask(f: Flag) -> Word {
+        0x1 << Self::flag_bit(f)
+    }
+
+    fn flag_bit(f: Flag) -> u8 {
+        use self::Flag::*;
+        match f {
+            Sign => 7,
+            Zero => 6,
+            AuxCarry => 4,
+            Parity => 2,
+            Carry => 0,
+        }
+    }
+
+    fn get(&self, f: Flag) -> bool {
+        (self.0 & Self::mask(f)) != 0
+    }
+
+    fn val(&mut self, f: Flag, val: bool) {
+        if val {
+            self.0 |= Self::mask(f)
+        } else {
+            self.0 &= !(Self::mask(f))
+        }
+    }
+
+    fn set(&mut self, f: Flag) {
+        self.val(f, true)
+    }
+
+    fn clear(&mut self, f: Flag) {
+        self.val(f, false)
+    }
+
+    fn toggle(&mut self, f: Flag) {
+        let toggled = !self.get(f);
+        self.val(f, toggled)
+    }
+}
+
+impl From<Word> for Flags {
+    fn from(w: Word) -> Self {
+        Flags(w)
+    }
+}
+
+impl Into<Word> for Flags {
+    fn into(self) -> Word {
+        self.0
+    }
+}
+
+#[derive(Default, Clone, Eq, PartialEq, Debug)]
 struct State {
     a: RegWord,
     b: RegWord,
@@ -175,7 +243,7 @@ struct State {
     pc: RegAddress,
     sp: RegAddress,
 
-    flags: Word,
+    flags: Flags,
 }
 
 #[derive(Copy, Clone)]
@@ -220,51 +288,12 @@ impl State {
 /// Flags stuff
 impl State {
     fn flag(&self, f: Flag) -> bool {
-        (self.flags & 0x1 << self.flag_bit(f)) != 0
-    }
-
-    fn val_flag(&mut self, f: Flag, val: bool) {
-        if val {
-            self.flags |= 0x1 << self.flag_bit(f)
-        } else {
-            self.flags &= !(0x1 << self.flag_bit(f))
-        }
-    }
-
-    fn set_flag(&mut self, f: Flag) {
-        self.val_flag(f, true)
-    }
-
-    fn clear_flag(&mut self, f: Flag) {
-        self.val_flag(f, false)
-    }
-
-    fn toggle_flag(&mut self, f: Flag) {
-        let toggled = !self.flag(f);
-        self.val_flag(f, toggled)
-    }
-
-    fn flag_bit(&self, f: Flag) -> u8 {
-        use self::Flag::*;
-        match f {
-            Sign => 7,
-            Zero => 6,
-            AuxCarry => 4,
-            Parity => 2,
-            Carry => 0,
-        }
+        self.flags.get(f)
     }
 
     fn pack_flags(&self) -> Word {
-        let mut pack = 0x02;
-        use self::Flag::*;
-
-        for f in [Sign, Zero, AuxCarry, Parity, Carry].iter().cloned() {
-            if self.flag(f) {
-                pack |= 0x1 << self.flag_bit(f);
-            }
-        }
-        pack
+        let mask: Word = self.flags.clone().into();
+        0x02 | mask
     }
 }
 
@@ -372,15 +401,7 @@ impl Cpu {
     }
 
     fn fix_static_flags(&mut self, r: Reg) {
-        use self::Flag::*;
-
-        for (f, v) in &[
-            (Zero, self.reg(r).is_zero()),
-            (Sign, self.reg(r).sign_bit()),
-            (Parity, self.reg(r).parity())
-        ] {
-            self.state.val_flag(*f, *v)
-        }
+        self.reg(r).clone().update_flags(&mut self.state.flags)
     }
 
     fn push_val(&mut self, val: Word) {
@@ -411,10 +432,10 @@ impl Cpu {
 /// Carry bit Instructions
 impl Cpu {
     fn cmc(&mut self) {
-        self.state.toggle_flag(Flag::Carry);
+        self.state.flags.toggle(Flag::Carry);
     }
     fn stc(&mut self) {
-        self.state.set_flag(Flag::Carry);
+        self.state.flags.set(Flag::Carry);
     }
 }
 
@@ -474,7 +495,7 @@ impl Cpu {
     }
 }
 
-/// Accumulator
+/// Carry
 impl Cpu {
     fn carry(&self) -> bool {
         self.state.flag(Flag::Carry)
@@ -489,14 +510,17 @@ impl Cpu {
     }
 
     fn set_carry_state(&mut self, state: bool) {
-        self.state.val_flag(Flag::Carry, state)
+        self.state.flags.val(Flag::Carry, state)
     }
 
     fn store_a_carry(&mut self) {
         let val = self.state.a.carry;
         self.set_carry_state(val)
     }
+}
 
+/// Accumulator
+impl Cpu {
     fn add(&mut self, r: Reg) {
         self.state.a += self.reg(r).val;
         self.store_a_carry();
@@ -963,7 +987,7 @@ mod test {
 
     impl ApplyState for Flag {
         fn apply(&self, cpu: &mut Cpu) {
-            cpu.state.set_flag(*self)
+            cpu.state.flags.set(*self)
         }
     }
 
@@ -1149,8 +1173,8 @@ mod test {
             let sp = 0x321c;
             cpu.state.set_sp(sp);
             cpu.state.set_a(0xde);
-            cpu.state.set_flag(Carry);
-            cpu.state.set_flag(Zero);
+            cpu.state.flags.set(Carry);
+            cpu.state.flags.set(Zero);
 
             cpu.exec(Push(BytePair::AF));
 
@@ -1606,7 +1630,7 @@ mod test {
         fn should_update_flags(mut cpu: Cpu, op: SRegCmd, a: Word, b: Word) {
             cpu.state.set_a(a);
             cpu.state.set_b(b);
-            cpu.state.set_flag(Zero);
+            cpu.state.flags.set(Zero);
 
             let cmd = (op, Reg::B).into();
             cpu.exec(cmd);
@@ -1782,7 +1806,7 @@ mod test {
     #[rstest]
     fn cma_should_not_change_flags(mut cpu: Cpu) {
         cpu.state.set_a(0xff);
-        cpu.state.set_flag(Zero);
+        cpu.state.flags.set(Zero);
 
         cpu.exec(Cma);
 
