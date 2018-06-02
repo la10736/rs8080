@@ -219,12 +219,6 @@ impl Flags {
     }
 }
 
-impl From<Word> for Flags {
-    fn from(w: Word) -> Self {
-        Flags(w)
-    }
-}
-
 impl Into<Word> for Flags {
     fn into(self) -> Word {
         self.0
@@ -417,6 +411,17 @@ impl Cpu {
     fn push_flags(&mut self) {
         let val = self.state.pack_flags();
         self.push_val(val);
+    }
+
+    fn pop_reg(&mut self, r: Reg) {
+        let val = self.pop_val();
+        *self.mut_reg(r) = val.into();
+    }
+
+    fn pop_val(&mut self) -> Word {
+        let val = self.bus.read_byte(self.state.sp.into());
+        self.state.sp += 1;
+        val
     }
 }
 
@@ -626,6 +631,29 @@ impl Cpu {
         }
     }
 
+    fn pop(&mut self, bp: BytePair) {
+        use self::BytePair::*;
+        match bp {
+            BC => {
+                self.pop_reg(Reg::C);
+                self.pop_reg(Reg::B);
+            }
+            DE => {
+                self.pop_reg(Reg::E);
+                self.pop_reg(Reg::D);
+            }
+            HL => {
+                self.pop_reg(Reg::L);
+                self.pop_reg(Reg::H);
+            }
+            AF => {
+                unimplemented!();
+//                self.pop_flags();
+                self.pop_reg(Reg::A);
+            }
+        }
+    }
+
     fn inx(&mut self, rp: RegPair) {
         use self::RegPair::*;
         match rp {
@@ -742,6 +770,9 @@ impl Cpu {
             }
             Push(bp) => {
                 self.push(bp)
+            }
+            Pop(bp) => {
+                self.pop(bp)
             }
             // Continue
             Inx(rp) => {
@@ -919,6 +950,10 @@ mod test {
 
     trait ApplyState {
         fn apply(&self, cpu: &mut Cpu);
+    }
+
+    impl ApplyState for () {
+        fn apply(&self, _cpu: &mut Cpu) {}
     }
 
     impl ApplyState for RegPairValue {
@@ -1146,13 +1181,14 @@ mod test {
 
         #[rstest]
         fn push_should_put_register_pair_on_the_stack(mut cpu: Cpu) {
+            let sp = 0x321c;
             cpu.set_de(0x8f9d);
-            cpu.state.set_sp(0x321c);
+            cpu.state.set_sp(sp);
 
             cpu.exec(Push(BytePair::DE));
 
-            assert_eq!(cpu.bus.read_byte(0x321c - 1), 0x8f);
-            assert_eq!(cpu.bus.read_byte(0x321c - 2), 0x9d);
+            assert_eq!(cpu.bus.read_byte(sp - 1), 0x8f);
+            assert_eq!(cpu.bus.read_byte(sp - 2), 0x9d);
         }
 
         #[rstest]
@@ -1174,12 +1210,8 @@ mod test {
 
             cpu.exec(Push(BytePair::AF));
 
-            assert_eq!(cpu.bus.read_byte(0x321c - 1), 0xde);
-            assert_eq!(cpu.bus.read_byte(0x321c - 2), 0x43);
-        }
-
-        impl ApplyState for () {
-            fn apply(&self, cpu: &mut Cpu) {}
+            assert_eq!(cpu.bus.read_byte(sp - 1), 0xde);
+            assert_eq!(cpu.bus.read_byte(sp - 2), 0x43);
         }
 
         #[rstest_parametrize(
@@ -1197,6 +1229,34 @@ mod test {
             let flags = cpu.state.pack_flags();
 
             assert_eq!(flags, expected);
+        }
+
+        #[rstest]
+        fn pop_should_recover_regs(mut cpu: Cpu) {
+            let sp = 0x321a;
+            cpu.bus.write_byte(sp, 0x8f);
+            cpu.bus.write_byte(sp + 1, 0x9d);
+            cpu.state.set_sp(sp);
+
+            cpu.exec(Pop(BytePair::DE));
+
+            assert_eq!(cpu.state.d, 0x9d);
+            assert_eq!(cpu.state.e, 0x8f);
+        }
+
+        #[test]
+        fn pop_should_move_stack_pointer() {
+            unimplemented!()
+        }
+
+        #[test]
+        fn pop_should_recover_flags() {
+            unimplemented!()
+        }
+
+        #[test]
+        fn pop_should_recover_from_push() {
+            unimplemented!()
         }
     }
 
