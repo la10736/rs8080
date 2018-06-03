@@ -3,6 +3,8 @@ use super::{
     Word,
 };
 
+use ::std::mem::swap;
+
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 struct RegWord {
     val: Word,
@@ -729,6 +731,11 @@ impl Cpu {
             }
         }
     }
+
+    fn xchg(&mut self) {
+        swap(&mut self.state.d, &mut self.state.h);
+        swap(&mut self.state.e, &mut self.state.l);
+    }
 }
 
 impl Cpu {
@@ -809,13 +816,16 @@ impl Cpu {
             Dad(rp) => {
                 self.dad(rp)
             }
-            // Continue
             Inx(rp) => {
                 self.inx(rp)
             }
             Dcx(rp) => {
                 self.dcx(rp)
             }
+            Xchg => {
+                self.xchg()
+            }
+            // Continue
             Lxi(rp) => {
                 self.lxi(rp)
             }
@@ -1406,6 +1416,19 @@ mod test {
 
             assert_eq!(query.ask(&cpu), expected);
         }
+
+    }
+    #[rstest]
+    fn xchg_should_swap_hl_and_de_registers(mut cpu: Cpu) {
+        let de = 0x2345;
+        let hl = 0xaf43;
+        cpu.set_de(de);
+        cpu.set_hl(hl);
+
+        cpu.exec(Xchg);
+
+        assert_eq!(cpu.de(), hl);
+        assert_eq!(cpu.hl(), de);
     }
 
     #[rstest_parametrize(
