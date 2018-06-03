@@ -953,6 +953,36 @@ mod test {
 
     impl<T0: QueryResult, T1: QueryResult> QueryResult for (T0, T1) {}
 
+    impl CpuQuery for Flag {
+        type Result = bool;
+
+        fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+            cpu.state.flag(*self)
+        }
+    }
+
+    impl CpuQuery for Reg {
+        type Result = Word;
+
+        fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+            WordReg::from(*self).ask(&cpu)
+        }
+    }
+
+    impl CpuQuery for BytePair {
+        type Result = (Word, Word);
+
+        fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+            use self::BytePair::*;
+            match self {
+                BC => cpu.bc(),
+                DE => cpu.de(),
+                HL => cpu.hl(),
+                AF => unimplemented!(),
+            }.into()
+        }
+    }
+
     impl<T0: QueryResult, R0, T1: QueryResult, R1> CpuQuery for (R0, R1) where
         R0: CpuQuery<Result=T0>,
         R1: CpuQuery<Result=T1>,
@@ -1026,17 +1056,22 @@ mod test {
         }
     }
 
-    impl CpuQuery for Flag {
-        type Result = bool;
-
-        fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
-            cpu.state.flag(*self)
-        }
-    }
-
     impl ApplyState for Flag {
         fn apply(&self, cpu: &mut Cpu) {
             cpu.state.flags.set(*self)
+        }
+    }
+
+    impl ApplyState for (BytePair, (Word, Word)) {
+        fn apply(&self, cpu: &mut Cpu) {
+            let (rp, v) = self.clone();
+            use self::BytePair::*;
+            match rp {
+                BC => cpu.set_bc(v),
+                DE => cpu.set_de(v),
+                HL => cpu.set_hl(v),
+                AF => unimplemented!(),
+            }
         }
     }
 
@@ -1086,15 +1121,6 @@ mod test {
                 L => WordReg::L,
                 M => WordReg::M,
             }
-        }
-    }
-
-
-    impl CpuQuery for Reg {
-        type Result = Word;
-
-        fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
-            WordReg::from(*self).ask(&cpu)
         }
     }
 
@@ -1273,20 +1299,24 @@ mod test {
         }
 
         #[rstest]
-        fn pop_should_recover_flags(mut cpu: Cpu) {
-            let sp = 0x1230;
+        fn pop_should_recover_flags_and_accumulator(mut cpu: Cpu) {
+            let sp = 0x2c00;
             cpu.state.set_sp(sp);
             cpu.bus.write_byte(sp, 0xc3);
+            cpu.bus.write_byte(sp + 1, 0xff);
 
             cpu.exec(Pop(BytePair::AF));
 
             assert!(cpu.state.flag(Sign));
             assert!(cpu.state.flag(Zero));
+            assert!(!cpu.state.flag(AuxCarry));
+            assert!(!cpu.state.flag(Parity));
             assert!(cpu.state.flag(Carry));
+            assert_eq!(cpu.state.a, 0xff);
         }
 
         #[rstest]
-        fn pop_should_recover_from_push(mut cpu: Cpu) {
+        fn pop_should_recover_flags_from_push(mut cpu: Cpu) {
             cpu.state.flags.set(Zero);
             cpu.state.flags.set(Parity);
             cpu.exec(Push(BytePair::AF));
@@ -1299,6 +1329,25 @@ mod test {
             assert!(!cpu.state.flags.get(AuxCarry));
             assert!(cpu.state.flags.get(Parity));
             assert!(!cpu.state.flags.get(Carry));
+        }
+
+        use self::BytePair::*;
+
+        #[rstest_parametrize(
+        r, r0, r1,
+        case(BC, 0x32, 0xf1),
+        case(DE, 0x02, 0xac),
+        case(HL, 0xa3, 0x01),
+        )]
+        fn pop_should_recover_all_registers_stored_by_posh(mut cpu: Cpu, r: BytePair, r0: Word, r1: Word) {
+
+            (r, (r0, r1)).apply(&mut cpu);
+            cpu.exec(Push(r));
+            (r, (0x00, 0x00)).apply(&mut cpu);
+
+            cpu.exec(Pop(r));
+
+            assert_eq!(r.ask(&cpu), (r0, r1));
         }
     }
 
