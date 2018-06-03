@@ -10,7 +10,10 @@ struct RegWord {
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
-struct RegAddress(Address);
+struct RegAddress {
+    val: Address,
+    carry: bool,
+}
 
 impl RegWord {
     fn increment(&mut self) { *self += 1; }
@@ -42,13 +45,13 @@ impl RegWord {
 
 impl ::std::ops::AddAssign<Word> for RegWord {
     fn add_assign(&mut self, rhs: Word) {
-        *self = self.val.overflowing_add(rhs).into();
+        *self = *self + rhs;
     }
 }
 
 impl ::std::ops::SubAssign<Word> for RegWord {
     fn sub_assign(&mut self, rhs: u8) {
-        *self = self.val.overflowing_sub(rhs).into();
+        *self = *self - rhs;
     }
 }
 
@@ -96,13 +99,13 @@ impl Into<Word> for RegWord {
 
 impl ::std::ops::AddAssign<Address> for RegAddress {
     fn add_assign(&mut self, rhs: Address) {
-        self.0 += rhs;
+        *self = *self + rhs;
     }
 }
 
 impl ::std::ops::SubAssign<Address> for RegAddress {
     fn sub_assign(&mut self, rhs: Address) {
-        self.0 -= rhs;
+        *self = *self - rhs;
     }
 }
 
@@ -110,8 +113,8 @@ impl ::std::ops::Add<Address> for RegAddress {
     type Output = RegAddress;
 
     fn add(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
-        let (a, _b) = self.0.overflowing_add(rhs);
-        RegAddress(a)
+        let (val, carry) = self.val.overflowing_add(rhs);
+        RegAddress {val, carry}
     }
 }
 
@@ -119,8 +122,8 @@ impl ::std::ops::Sub<Address> for RegAddress {
     type Output = RegAddress;
 
     fn sub(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
-        let (a, _b) = self.0.overflowing_sub(rhs);
-        RegAddress(a)
+        let (val, carry) = self.val.overflowing_sub(rhs);
+        RegAddress {val, carry}
     }
 }
 
@@ -131,15 +134,15 @@ impl PartialEq<Address> for RegAddress {
 }
 
 impl From<Address> for RegAddress {
-    fn from(v: Address) -> Self {
-        RegAddress(v)
+    fn from(val: Address) -> Self {
+        RegAddress {val, ..Default::default()}
     }
 }
 
 impl From<(Word, Word)> for RegAddress {
     fn from(v: (Word, Word)) -> Self {
         let (h, l) = v;
-        RegAddress((h as Address) << 8 | (l as Address))
+        ((h as Address) << 8 | (l as Address)).into()
     }
 }
 
@@ -152,7 +155,7 @@ impl From<(RegWord, RegWord)> for RegAddress {
 
 impl Into<Address> for RegAddress {
     fn into(self) -> Address {
-        self.0
+        self.val
     }
 }
 
@@ -161,7 +164,7 @@ const WORD_MASK: Address = 0xff;
 
 impl From<RegAddress> for (RegWord, RegWord) {
     fn from(v: RegAddress) -> Self {
-        let inner = v.0;
+        let inner = v.val;
         ((((inner >> WORD_SIZE) & WORD_MASK) as Word).into(),
          ((inner & WORD_MASK) as Word).into())
     }
@@ -169,7 +172,7 @@ impl From<RegAddress> for (RegWord, RegWord) {
 
 impl Into<(Word, Word)> for RegAddress {
     fn into(self) -> (Word, Word) {
-        let a = self.0;
+        let a = self.val;
         ((a >> 8) as Word, (a & 0xff) as Word)
     }
 }
@@ -672,6 +675,17 @@ impl Cpu {
         }
     }
 
+    fn dad(&mut self, rp: RegPair) {
+        let a = self.hl() + match rp {
+            RegPair::BC => self.bc(),
+            RegPair::DE => self.de(),
+            RegPair::HL => self.hl(),
+            RegPair::SP => self.state.sp,
+        }.into();
+        self.set_hl(a);
+        self.set_carry_state(a.carry);
+    }
+
     fn inx(&mut self, rp: RegPair) {
         use self::RegPair::*;
         match rp {
@@ -791,6 +805,9 @@ impl Cpu {
             }
             Pop(bp) => {
                 self.pop(bp)
+            }
+            Dad(rp) => {
+                self.dad(rp)
             }
             // Continue
             Inx(rp) => {
@@ -1092,7 +1109,7 @@ mod test {
     }
 
     impl From<(Reg, Word)> for RegValue {
-        fn from(vals: (Reg, u8)) -> Self {
+        fn from(vals: (Reg, Word)) -> Self {
             let (r, v) = vals;
             use self::Reg::*;
             match r {
@@ -1120,6 +1137,20 @@ mod test {
                 H => WordReg::H,
                 L => WordReg::L,
                 M => WordReg::M,
+            }
+        }
+    }
+
+    impl From<(RegPair, Address)> for RegPairValue {
+        fn from(vals: (RegPair, Address)) -> Self {
+            let (rp, addr) = vals;
+            let (r0, r1) = RegAddress::from(addr).into();
+            use self::RegPair::*;
+            match rp {
+                BC => RegPairValue::BC(r0, r1),
+                DE => RegPairValue::DE(r0, r1),
+                HL => RegPairValue::HL(r0, r1),
+                SP => RegPairValue::SP(addr),
             }
         }
     }
@@ -1340,7 +1371,6 @@ mod test {
         case(HL, 0xa3, 0x01),
         )]
         fn pop_should_recover_all_registers_stored_by_posh(mut cpu: Cpu, r: BytePair, r0: Word, r1: Word) {
-
             (r, (r0, r1)).apply(&mut cpu);
             cpu.exec(Push(r));
             (r, (0x00, 0x00)).apply(&mut cpu);
@@ -1348,6 +1378,33 @@ mod test {
             cpu.exec(Pop(r));
 
             assert_eq!(r.ask(&cpu), (r0, r1));
+        }
+
+        #[rstest]
+        fn dad_should_add_reg_pair_to_hl(mut cpu: Cpu) {
+            cpu.set_bc(0x339f);
+            cpu.set_hl(0xa17b);
+
+            cpu.exec(Dad(RegPair::BC));
+
+            assert_eq!(cpu.hl(), 0xd51a);
+        }
+
+        #[rstest_parametrize(
+        hl, rp, sum, expected,
+        case(0xffff, Unwrap("RegPair::DE"), 0x0001, true),
+        case(0xffff, Unwrap("RegPair::BC"), 0x0000, false),
+        case(0x0001, Unwrap("RegPair::BC"), 0xffff, true),
+        case(0x0000, Unwrap("RegPair::SP"), 0xffff, false),
+        case(0xa7f2, Unwrap("RegPair::SP"), 0x8f31, true),
+        )]
+        fn dad_should_update_carry_bit(mut cpu: Cpu, hl: Address, rp: RegPair, sum: Address, expected: bool) {
+            RegPairValue::from((rp, sum)).apply(&mut cpu);
+            cpu.set_hl(hl);
+
+            cpu.exec(Dad(rp));
+
+            assert_eq!(cpu.carry(), expected)
         }
     }
 
