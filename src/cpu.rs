@@ -329,6 +329,17 @@ impl MemoryBus {
     fn write_byte(&mut self, address: Address, val: u8) {
         self.bank[address as usize] = val
     }
+
+    fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) {
+        data.as_ref().iter().enumerate().for_each(
+            |(off, v)|
+            self.write_byte(address+(off as Address), *v)
+        )
+    }
+
+    fn ref_mut(&mut self, address: Address) -> &mut u8 {
+        &mut self.bank[address as usize]
+    }
 }
 
 #[derive(Default, Clone)]
@@ -736,6 +747,12 @@ impl Cpu {
         swap(&mut self.state.d, &mut self.state.h);
         swap(&mut self.state.e, &mut self.state.l);
     }
+
+    fn xthl(&mut self) {
+        let sp = self.state.sp.into();
+        swap(self.bus.ref_mut(sp), &mut self.state.h.val);
+        swap(self.bus.ref_mut(sp + 1), &mut self.state.l.val);
+    }
 }
 
 impl Cpu {
@@ -824,6 +841,9 @@ impl Cpu {
             }
             Xchg => {
                 self.xchg()
+            }
+            Xthl => {
+                self.xthl()
             }
             // Continue
             Lxi(rp) => {
@@ -1417,18 +1437,32 @@ mod test {
             assert_eq!(query.ask(&cpu), expected);
         }
 
-    }
-    #[rstest]
-    fn xchg_should_swap_hl_and_de_registers(mut cpu: Cpu) {
-        let de = 0x2345;
-        let hl = 0xaf43;
-        cpu.set_de(de);
-        cpu.set_hl(hl);
+        #[rstest]
+        fn xchg_should_swap_hl_and_de_registers(mut cpu: Cpu) {
+            let de = 0x2345;
+            let hl = 0xaf43;
+            cpu.set_de(de);
+            cpu.set_hl(hl);
 
-        cpu.exec(Xchg);
+            cpu.exec(Xchg);
 
-        assert_eq!(cpu.de(), hl);
-        assert_eq!(cpu.hl(), de);
+            assert_eq!(cpu.de(), hl);
+            assert_eq!(cpu.hl(), de);
+        }
+
+        #[rstest]
+        fn xthl_should_swap_hl_and_two_bytes_pointed_by_stack_pointer(mut cpu: Cpu) {
+            let sp = 0x10ad;
+            cpu.set_hl(0x0b3c);
+            cpu.state.set_sp(sp);
+            cpu.bus.write(sp, &[0xf0, 0x0d]);
+
+            cpu.exec(Xthl);
+
+            assert_eq!(cpu.hl(), 0xf00d);
+            assert_eq!(cpu.bus.read_byte(sp), 0x0b);
+            assert_eq!(cpu.bus.read_byte(sp + 1), 0x3c);
+        }
     }
 
     #[rstest_parametrize(
