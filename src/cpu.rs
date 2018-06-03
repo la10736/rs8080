@@ -217,6 +217,16 @@ impl Flags {
         let toggled = !self.get(f);
         self.val(f, toggled)
     }
+
+    fn clear_all(&mut self) {
+        self.0 = 0x0
+    }
+}
+
+impl From<Word> for Flags {
+    fn from(w: Word) -> Self {
+        Flags(w)
+    }
 }
 
 impl Into<Word> for Flags {
@@ -288,6 +298,10 @@ impl State {
     fn pack_flags(&self) -> Word {
         let mask: Word = self.flags.clone().into();
         0x02 | mask
+    }
+
+    fn unpack_flags(&mut self, flags: Word) {
+        self.flags = flags.into();
     }
 }
 
@@ -413,15 +427,20 @@ impl Cpu {
         self.push_val(val);
     }
 
+    fn pop_val(&mut self) -> Word {
+        let val = self.bus.read_byte(self.state.sp.into());
+        self.state.sp += 1;
+        val
+    }
+
     fn pop_reg(&mut self, r: Reg) {
         let val = self.pop_val();
         *self.mut_reg(r) = val.into();
     }
 
-    fn pop_val(&mut self) -> Word {
-        let val = self.bus.read_byte(self.state.sp.into());
-        self.state.sp += 1;
-        val
+    fn pop_flags(&mut self) {
+        let val = self.pop_val();
+        self.state.unpack_flags(val);
     }
 }
 
@@ -647,8 +666,7 @@ impl Cpu {
                 self.pop_reg(Reg::H);
             }
             AF => {
-                unimplemented!();
-//                self.pop_flags();
+                self.pop_flags();
                 self.pop_reg(Reg::A);
             }
         }
@@ -1244,39 +1262,63 @@ mod test {
             assert_eq!(cpu.state.e, 0x8f);
         }
 
-        #[test]
-        fn pop_should_move_stack_pointer() {
-            unimplemented!()
+        #[rstest]
+        fn pop_should_move_stack_pointer(mut cpu: Cpu) {
+            let sp = 0x1230;
+            cpu.state.set_sp(sp);
+
+            cpu.exec(Pop(BytePair::BC));
+
+            assert_eq!(cpu.state.sp, sp + 2);
         }
 
-        #[test]
-        fn pop_should_recover_flags() {
-            unimplemented!()
+        #[rstest]
+        fn pop_should_recover_flags(mut cpu: Cpu) {
+            let sp = 0x1230;
+            cpu.state.set_sp(sp);
+            cpu.bus.write_byte(sp, 0xc3);
+
+            cpu.exec(Pop(BytePair::AF));
+
+            assert!(cpu.state.flag(Sign));
+            assert!(cpu.state.flag(Zero));
+            assert!(cpu.state.flag(Carry));
         }
 
-        #[test]
-        fn pop_should_recover_from_push() {
-            unimplemented!()
+        #[rstest]
+        fn pop_should_recover_from_push(mut cpu: Cpu) {
+            cpu.state.flags.set(Zero);
+            cpu.state.flags.set(Parity);
+            cpu.exec(Push(BytePair::AF));
+            cpu.state.flags.clear_all();
+
+            cpu.exec(Pop(BytePair::AF));
+
+            assert!(!cpu.state.flags.get(Sign));
+            assert!(cpu.state.flags.get(Zero));
+            assert!(!cpu.state.flags.get(AuxCarry));
+            assert!(cpu.state.flags.get(Parity));
+            assert!(!cpu.state.flags.get(Carry));
         }
     }
 
     #[rstest_parametrize(
     init, query, expected,
-    case(Unwrap("RegValue::B(0x00)"), Unwrap("Flag::Zero"), true),
-    case(Unwrap("RegValue::B(0x12)"), Unwrap("Flag::Zero"), false),
-    case(Unwrap("RegValue::B(0xff)"), Unwrap("Flag::Zero"), false),
-    case(Unwrap("RegValue::A(0x80)"), Unwrap("Flag::Sign"), true),
-    case(Unwrap("RegValue::A(0xA3)"), Unwrap("Flag::Sign"), true),
-    case(Unwrap("RegValue::A(0xff)"), Unwrap("Flag::Sign"), true),
-    case(Unwrap("RegValue::A(0x00)"), Unwrap("Flag::Sign"), false),
-    case(Unwrap("RegValue::A(0x12)"), Unwrap("Flag::Sign"), false),
-    case(Unwrap("RegValue::A(0x7f)"), Unwrap("Flag::Sign"), false),
-    case(Unwrap("RegValue::D(0x00)"), Unwrap("Flag::Parity"), true),
-    case(Unwrap("RegValue::D(0x03)"), Unwrap("Flag::Parity"), true),
-    case(Unwrap("RegValue::D(0xff)"), Unwrap("Flag::Parity"), true),
-    case(Unwrap("RegValue::D(0x01)"), Unwrap("Flag::Parity"), false),
-    case(Unwrap("RegValue::D(0x1f)"), Unwrap("Flag::Parity"), false),
-    case(Unwrap("RegValue::D(0x37)"), Unwrap("Flag::Parity"), false),
+    case(Unwrap("RegValue::B(0x00)"), Zero, true),
+    case(Unwrap("RegValue::B(0x12)"), Zero, false),
+    case(Unwrap("RegValue::B(0xff)"), Zero, false),
+    case(Unwrap("RegValue::A(0x80)"), Sign, true),
+    case(Unwrap("RegValue::A(0xA3)"), Sign, true),
+    case(Unwrap("RegValue::A(0xff)"), Sign, true),
+    case(Unwrap("RegValue::A(0x00)"), Sign, false),
+    case(Unwrap("RegValue::A(0x12)"), Sign, false),
+    case(Unwrap("RegValue::A(0x7f)"), Sign, false),
+    case(Unwrap("RegValue::D(0x00)"), Parity, true),
+    case(Unwrap("RegValue::D(0x03)"), Parity, true),
+    case(Unwrap("RegValue::D(0xff)"), Parity, true),
+    case(Unwrap("RegValue::D(0x01)"), Parity, false),
+    case(Unwrap("RegValue::D(0x1f)"), Parity, false),
+    case(Unwrap("RegValue::D(0x37)"), Parity, false),
     )]
     fn static_flags<Q, R>(mut cpu: Cpu, init: RegValue, query: Q, expected: R)
         where R: QueryResult, Q: CpuQuery<Result=R>
