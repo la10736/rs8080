@@ -753,6 +753,10 @@ impl Cpu {
         swap(self.bus.ref_mut(sp), &mut self.state.h.val);
         swap(self.bus.ref_mut(sp + 1), &mut self.state.l.val);
     }
+
+    fn sphl(&mut self) {
+        self.state.sp = self.hl().into();
+    }
 }
 
 impl Cpu {
@@ -844,6 +848,9 @@ impl Cpu {
             }
             Xthl => {
                 self.xthl()
+            }
+            Sphl => {
+                self.sphl()
             }
             // Continue
             Lxi(rp) => {
@@ -1462,6 +1469,15 @@ mod test {
             assert_eq!(cpu.hl(), 0xf00d);
             assert_eq!(cpu.bus.read_byte(sp), 0x0b);
             assert_eq!(cpu.bus.read_byte(sp + 1), 0x3c);
+        }
+
+        #[rstest]
+        fn sphl_should_copy_hl_in_sp(mut cpu: Cpu) {
+            cpu.set_hl(0x506c);
+
+            cpu.exec(Sphl);
+
+            assert_eq!(cpu.state.sp, 0x506c)
         }
     }
 
