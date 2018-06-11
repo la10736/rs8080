@@ -852,7 +852,6 @@ impl Cpu {
             Sphl => {
                 self.sphl()
             }
-            // Continue
             Lxi(rp) => {
                 self.lxi(rp)
             }
@@ -1481,6 +1480,24 @@ mod test {
         }
     }
 
+    mod immediate {
+        use super::*;
+
+        #[rstest_parametrize(
+        rp, query, expected,
+        case(Unwrap("RegPairValue::BC(0xe4, 0xf1)"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xe4, 0xf1)")),
+        case(Unwrap("RegPairValue::DE(0x20, 0xb1)"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xb1)")),
+        case(Unwrap("RegPairValue::HL(0x02, 0xae)"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x02, 0xae)")),
+        case(Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
+        )]
+        fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
+            cpu.exec(Lxi(rp));
+
+            assert_eq!(query.ask(&cpu), expected);
+        }
+
+    }
+
     #[rstest_parametrize(
     init, query, expected,
     case(Unwrap("RegValue::B(0x00)"), Zero, true),
@@ -2039,43 +2056,18 @@ mod test {
 
     #[rstest_parametrize(
     instruction, start, expected,
-    case(Unwrap("Lxi(RegPairValue::BC(0xae,0x02))"), 0x3245, 0x3248),
-    case(Unwrap("Lxi(RegPairValue::DE(0xae,0x02))"), 0x1234, 0x1237),
-    case(Unwrap("Lxi(RegPairValue::HL(0xae,0x02))"), 0x4321, 0x4324),
-    case(Unwrap("Lxi(RegPairValue::SP(0xae02))"), 0x1010, 0x1013),
+    case(Unwrap("Lxi(RegPairValue::BC(0xae,0x02))")),
+    case(Nop),
+    case(Rar),
+    case(Rrc),
     )]
-    fn lxi_should_advance_pc(instruction: Instruction, start: Address, expected: Address) {
-        let mut cpu = CpuBuilder::default()
-            .state(StateBuilder::default()
-                .pc(start)
-                .create()
-            )
-            .create();
+    fn should_advance_pc(mut cpu: Cpu, instruction: Instruction) {
+        let start = 0x3241;
+        cpu.state.pc = start.into();
 
         cpu.exec(instruction);
 
-        assert_eq!(cpu.state.pc, expected);
-    }
-
-    #[rstest]
-    fn lxi_bc(mut cpu: Cpu) {
-        cpu.exec(Lxi(RegPairValue::BC(0xae, 0x02)));
-
-        assert_eq!(cpu.state.b, 0xae);
-        assert_eq!(cpu.state.c, 0x02);
-    }
-
-    #[rstest_parametrize(
-    rp, query, expected,
-    case(Unwrap("RegPairValue::BC(0xe4, 0xf1)"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xe4, 0xf1)")),
-    case(Unwrap("RegPairValue::DE(0x20, 0xb1)"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xb1)")),
-    case(Unwrap("RegPairValue::HL(0x02, 0xae)"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x02, 0xae)")),
-    case(Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
-    )]
-    fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
-        cpu.exec(Lxi(rp));
-
-        assert_eq!(query.ask(&cpu), expected);
+        assert_eq!(cpu.state.pc, start + instruction.length());
     }
 
     #[rstest]
