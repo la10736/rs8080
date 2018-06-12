@@ -7,30 +7,40 @@ use ::std::mem::swap;
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 struct RegWord {
-    val: Word,
-    carry: bool,
+    val: Word
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 struct RegAddress {
     val: Address,
-    carry: bool,
 }
 
 impl RegWord {
-    fn increment(&mut self) { *self += 1; }
-    fn decrement(&mut self) { *self -= 1; }
+    fn overflow_add(&mut self, val: Word) -> bool {
+        let (val, carry) = self.val.overflowing_add(val);
+        self.val = val;
+        carry
+    }
+    fn overflow_sub(&mut self, val: Word) -> bool {
+        let (val, carry) = self.val.overflowing_sub(val);
+        self.val = val;
+        carry
+    }
+    fn increment(&mut self) -> bool { self.overflow_add(1) }
+    fn decrement(&mut self) -> bool { self.overflow_sub(1) }
     fn one_complement(&mut self) { *self = (0xff ^ self.val).into() }
     fn is_zero(&self) -> bool { self.val == 0 }
     fn sign_bit(&self) -> bool { (self.val & 0x80) != 0x00 }
     fn parity(&self) -> bool { (self.val.count_ones() % 2) == 0 }
-    fn rotate_left(&mut self) {
-        self.carry = (self.val & 0x80) == 0x80;
+    fn rotate_left(&mut self) -> bool {
+        let carry = (self.val & 0x80) == 0x80;
         self.val = self.val.rotate_left(1);
+        carry
     }
-    fn rotate_right(&mut self) {
-        self.carry = (self.val & 0x01) == 0x01;
+    fn rotate_right(&mut self) -> bool {
+        let carry = (self.val & 0x01) == 0x01;
         self.val = self.val.rotate_right(1);
+        carry
     }
     fn update_flags(&self, flags: &mut Flags) {
         use self::Flag::*;
@@ -61,8 +71,8 @@ impl ::std::ops::Add<Word> for RegWord {
     type Output = RegWord;
 
     fn add(self, rhs: Word) -> <Self as ::std::ops::Add<Word>>::Output {
-        let (val, carry) = self.val.overflowing_add(rhs);
-        RegWord { val, carry }
+        let (val, _) = self.val.overflowing_add(rhs);
+        RegWord { val }
     }
 }
 
@@ -70,8 +80,8 @@ impl ::std::ops::Sub<Word> for RegWord {
     type Output = RegWord;
 
     fn sub(self, rhs: Word) -> <Self as ::std::ops::Sub<Word>>::Output {
-        let (val, carry) = self.val.overflowing_sub(rhs);
-        RegWord { val, carry }
+        let (val, _) = self.val.overflowing_sub(rhs);
+        RegWord { val }
     }
 }
 
@@ -83,13 +93,7 @@ impl PartialEq<Word> for RegWord {
 
 impl From<Word> for RegWord {
     fn from(val: Word) -> Self {
-        RegWord { val, ..Default::default() }
-    }
-}
-
-impl From<(Word, bool)> for RegWord {
-    fn from(data: (Word, bool)) -> Self {
-        RegWord { val: data.0, carry: data.1 }
+        RegWord { val }
     }
 }
 
@@ -99,33 +103,16 @@ impl Into<Word> for RegWord {
     }
 }
 
-impl ::std::ops::AddAssign<Address> for RegAddress {
-    fn add_assign(&mut self, rhs: Address) {
-        *self = *self + rhs;
+impl RegAddress {
+    fn overflow_add(&mut self, val: Address) -> bool {
+        let (val, carry) = self.val.overflowing_add(val);
+        self.val = val;
+        carry
     }
-}
-
-impl ::std::ops::SubAssign<Address> for RegAddress {
-    fn sub_assign(&mut self, rhs: Address) {
-        *self = *self - rhs;
-    }
-}
-
-impl ::std::ops::Add<Address> for RegAddress {
-    type Output = RegAddress;
-
-    fn add(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
-        let (val, carry) = self.val.overflowing_add(rhs);
-        RegAddress {val, carry}
-    }
-}
-
-impl ::std::ops::Sub<Address> for RegAddress {
-    type Output = RegAddress;
-
-    fn sub(self, rhs: Address) -> <Self as ::std::ops::Add<Address>>::Output {
-        let (val, carry) = self.val.overflowing_sub(rhs);
-        RegAddress {val, carry}
+    fn overflow_sub(&mut self, val: Address) -> bool {
+        let (val, carry) = self.val.overflowing_sub(val);
+        self.val = val;
+        carry
     }
 }
 
@@ -137,7 +124,7 @@ impl PartialEq<Address> for RegAddress {
 
 impl From<Address> for RegAddress {
     fn from(val: Address) -> Self {
-        RegAddress {val, ..Default::default()}
+        RegAddress { val, ..Default::default() }
     }
 }
 
@@ -180,7 +167,7 @@ impl Into<(Word, Word)> for RegAddress {
 }
 
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
-struct Flags (Word);
+struct Flags(Word);
 
 impl Flags {
     fn mask(f: Flag) -> Word {
@@ -333,7 +320,7 @@ impl MemoryBus {
     fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) {
         data.as_ref().iter().enumerate().for_each(
             |(off, v)|
-            self.write_byte(address+(off as Address), *v)
+                self.write_byte(address + (off as Address), *v)
         )
     }
 
@@ -347,37 +334,69 @@ pub struct Cpu {
     state: State,
 
     bus: MemoryBus,
-    m: RegWord,
 }
 
 /// Utilities
 impl Cpu {
-    fn mut_reg(&mut self, r: self::Reg) -> &mut RegWord {
+    fn reg(&self, r: self::Reg) -> RegWord {
         use self::Reg::*;
         match r {
-            A => &mut self.state.a,
-            B => &mut self.state.b,
-            C => &mut self.state.c,
-            D => &mut self.state.d,
-            E => &mut self.state.e,
-            H => &mut self.state.h,
-            L => &mut self.state.l,
-            M => &mut self.m,
+            A => self.state.a,
+            B => self.state.b,
+            C => self.state.c,
+            D => self.state.d,
+            E => self.state.e,
+            H => self.state.h,
+            L => self.state.l,
+            M => self.bus.read_byte(self.hl().val).into(),
         }
     }
 
-    fn reg(&mut self, r: self::Reg) -> &RegWord {
+    fn reg_set<R: Into<RegWord>>(&mut self, r: self::Reg, val: R) {
         use self::Reg::*;
+        let reg = val.into();
         match r {
-            A => &self.state.a,
-            B => &self.state.b,
-            C => &self.state.c,
-            D => &self.state.d,
-            E => &self.state.e,
-            H => &self.state.h,
-            L => &self.state.l,
-            M => &self.m,
+            A => self.state.a = reg,
+            B => self.state.b = reg,
+            C => self.state.c = reg,
+            D => self.state.d = reg,
+            E => self.state.e = reg,
+            H => self.state.h = reg,
+            L => self.state.l = reg,
+            M => self.set_m(reg.val),
         }
+    }
+
+    fn reg_apply<F: FnMut(&mut RegWord)>(&mut self, r: self::Reg, mut f: F) {
+        let mut val = self.reg(r);
+        f(&mut val);
+        self.reg_set(r, val);
+    }
+
+    fn reg_address(&self, r: self::RegPair) -> RegAddress {
+        use self::RegPair::*;
+        match r {
+            BC => self.bc(),
+            DE => self.de(),
+            HL => self.hl(),
+            SP => self.state.sp,
+        }
+    }
+
+    fn reg_address_set<R: Into<RegAddress>>(&mut self, r: self::RegPair, address: R) {
+        use self::RegPair::*;
+        match r {
+            BC => self.set_bc(address),
+            DE => self.set_de(address),
+            HL => self.set_hl(address),
+            SP => {self.state.sp = address.into();},
+        }
+    }
+
+    fn reg_address_apply<F: FnMut(&mut RegAddress)>(&mut self, r: self::RegPair, mut f: F) {
+        let mut val = self.reg_address(r);
+        f(&mut val);
+        self.reg_address_set(r, val);
     }
 
     fn address(&self, rp: self::RegPair) -> Address {
@@ -420,8 +439,14 @@ impl Cpu {
         self.state.l = l;
     }
 
-    fn set_m(&mut self, val: Word) {
-        self.m = val.into();
+    fn get_m(&self) -> RegWord {
+        let address = self.hl().val;
+        self.bus.read_byte(address).into()
+    }
+
+    fn set_m<W: Into<Word>>(&mut self, val: W) {
+        let address = self.hl().val;
+        self.bus.write_byte(address, val.into());
     }
 
     fn fix_static_flags(&mut self, r: Reg) {
@@ -429,7 +454,7 @@ impl Cpu {
     }
 
     fn push_val(&mut self, val: Word) {
-        self.state.sp -= 1;
+        self.state.sp.overflow_sub(1);
         self.bus.write_byte(self.state.sp.into(), val);
     }
 
@@ -445,13 +470,13 @@ impl Cpu {
 
     fn pop_val(&mut self) -> Word {
         let val = self.bus.read_byte(self.state.sp.into());
-        self.state.sp += 1;
+        self.state.sp.overflow_add(1);
         val
     }
 
     fn pop_reg(&mut self, r: Reg) {
         let val = self.pop_val();
-        *self.mut_reg(r) = val.into();
+        self.reg_set(r, val);
     }
 
     fn pop_flags(&mut self) {
@@ -497,31 +522,32 @@ impl Cpu {
     }
 
     fn mvi(&mut self, r: Reg, val: Word) {
-        *self.mut_reg(r) = val.into();
+        self.reg_set(r, val);
     }
 }
 
 /// Single Register Instructions
 impl Cpu {
     fn cma(&mut self) {
-        self.mut_reg(self::Reg::A).one_complement();
+        self.reg_apply(self::Reg::A, |r| r.one_complement());
     }
 
-    fn inr(&mut self, r: self::Reg) {
-        self.mut_reg(r).increment();
-        self.fix_static_flags(r);
+    fn inr(&mut self, reg: self::Reg) {
+        self.reg_apply(reg, |r| { r.increment(); });
+        self.fix_static_flags(reg);
     }
 
-    fn dcr(&mut self, r: self::Reg) {
-        self.mut_reg(r).decrement();
-        self.fix_static_flags(r);
+    fn dcr(&mut self, reg: self::Reg) {
+        self.reg_apply(reg, |r| { r.decrement(); });
+        self.fix_static_flags(reg);
     }
 }
 
 /// Data transfer Instruction
 impl Cpu {
     fn mov(&mut self, f: Reg, t: Reg) {
-        *self.mut_reg(t) = *self.reg(f)
+        let orig = self.reg(f);
+        self.reg_apply(t, |dest| { *dest = orig; })
     }
 
     fn stax(&mut self, rp: RegPair) {
@@ -552,38 +578,37 @@ impl Cpu {
     fn set_carry_state(&mut self, state: bool) {
         self.state.flags.val(Flag::Carry, state)
     }
-
-    fn store_a_carry(&mut self) {
-        let val = self.state.a.carry;
-        self.set_carry_state(val)
-    }
 }
 
 /// Accumulator
 impl Cpu {
     fn add(&mut self, r: Reg) {
-        self.state.a += self.reg(r).val;
-        self.store_a_carry();
+        let other = self.reg(r).val;
+        let carry = self.state.a.overflow_add(other);
+        self.set_carry_state(carry);
         self.fix_static_flags(Reg::A)
     }
 
     fn adc(&mut self, r: Reg) {
         let v = self.reg(r).val;
-        self.state.a += if self.carry() { v + 1 } else { v };
-        self.store_a_carry();
+        let other = if self.carry() { v + 1 } else { v };
+        let carry = self.state.a.overflow_add(other);
+        self.set_carry_state(carry);
         self.fix_static_flags(Reg::A)
     }
 
     fn sub(&mut self, r: Reg) {
-        self.state.a -= self.reg(r).val;
-        self.store_a_carry();
+        let other = self.reg(r).val;
+        let carry = self.state.a.overflow_sub(other);
+        self.set_carry_state(carry);
         self.fix_static_flags(Reg::A)
     }
 
     fn sbb(&mut self, r: Reg) {
         let v = self.reg(r).val;
-        self.state.a -= if self.carry() { v + 1 } else { v };
-        self.store_a_carry();
+        let other = if self.carry() { v + 1 } else { v };
+        let carry = self.state.a.overflow_sub(other);
+        self.set_carry_state(carry);
         self.fix_static_flags(Reg::A)
     }
 
@@ -618,12 +643,12 @@ const LEFT_BIT: u8 = 7;
 /// Rotate
 impl Cpu {
     fn rlc(&mut self) {
-        self.state.a.rotate_left();
-        self.store_a_carry();
+        let carry = self.state.a.rotate_left();
+        self.set_carry_state(carry);
     }
     fn rrc(&mut self) {
-        self.state.a.rotate_right();
-        self.store_a_carry();
+        let carry = self.state.a.rotate_right();
+        self.set_carry_state(carry);
     }
     fn ral(&mut self) {
         self.state.a.rotate_left();
@@ -693,58 +718,24 @@ impl Cpu {
     }
 
     fn dad(&mut self, rp: RegPair) {
-        let a = self.hl() + match rp {
+        let delta = match rp {
             RegPair::BC => self.bc(),
             RegPair::DE => self.de(),
             RegPair::HL => self.hl(),
             RegPair::SP => self.state.sp,
         }.into();
+        let mut a = self.hl();
+        let carry = a.overflow_add(delta);
         self.set_hl(a);
-        self.set_carry_state(a.carry);
+        self.set_carry_state(carry);
     }
 
     fn inx(&mut self, rp: RegPair) {
-        use self::RegPair::*;
-        match rp {
-            BC => {
-                let v = self.bc() + 1;
-                self.set_bc(v);
-            }
-            DE => {
-                let v = self.de() + 1;
-                self.set_de(v);
-            }
-            HL => {
-                let v = self.hl() + 1;
-                self.set_hl(v);
-            }
-            SP => {
-                let v = self.state.sp + 1;
-                self.state.set_sp(v);
-            }
-        }
+        self.reg_address_apply(rp, |a| {a.overflow_add(1);});
     }
 
     fn dcx(&mut self, rp: RegPair) {
-        use self::RegPair::*;
-        match rp {
-            BC => {
-                let v = self.bc() - 1;
-                self.set_bc(v);
-            }
-            DE => {
-                let v = self.de() - 1;
-                self.set_de(v);
-            }
-            HL => {
-                let v = self.hl() - 1;
-                self.set_hl(v);
-            }
-            SP => {
-                let v = self.state.sp - 1;
-                self.state.set_sp(v);
-            }
-        }
+        self.reg_address_apply(rp, |a| {a.overflow_sub(1);});
     }
 
     fn xchg(&mut self) {
@@ -864,7 +855,7 @@ impl Cpu {
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
-        self.state.pc += instruction.length();
+        self.state.pc.overflow_add(instruction.length());
     }
 }
 
@@ -992,7 +983,7 @@ mod test {
                 E => cpu.state.e,
                 H => cpu.state.h,
                 L => cpu.state.l,
-                M => cpu.m,
+                M => cpu.get_m(),
             }.into()
         }
     }
@@ -1954,7 +1945,7 @@ mod test {
             assert_eq!(cpu.state.flag(Zero), zero);
             assert_eq!(cpu.carry(), carry);
             assert_eq!(cpu.state.a, a);
-            assert_eq!(*cpu.reg(r), v);
+            assert_eq!(cpu.reg(r), v);
         }
 
         #[rstest_parametrize(
@@ -2134,9 +2125,9 @@ mod test {
 
         cpu.exec(Nop);
 
-        assert_eq!(state.pc + 1, cpu.state.pc);
+        assert_eq!(state.pc.val + 1, cpu.state.pc.into());
 
-        state.pc += 1;
+        state.pc.overflow_add(1);
 
         assert_eq!(state, cpu.state);
     }
