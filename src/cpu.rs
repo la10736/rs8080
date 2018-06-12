@@ -495,6 +495,10 @@ impl Cpu {
             }
         }
     }
+
+    fn mvi(&mut self, r: Reg, val: Word) {
+        *self.mut_reg(r) = val.into();
+    }
 }
 
 /// Single Register Instructions
@@ -854,6 +858,9 @@ impl Cpu {
             }
             Lxi(rp) => {
                 self.lxi(rp)
+            }
+            Mvi(r, val) => {
+                self.mvi(r, val)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1496,6 +1503,29 @@ mod test {
             assert_eq!(query.ask(&cpu), expected);
         }
 
+        #[rstest_parametrize(
+        r, val,
+        case(Unwrap("Reg::B"), 0x34),
+        case(Unwrap("Reg::D"), 0xf3),
+        case(Unwrap("Reg::L"), 0x01),
+        case(Unwrap("Reg::M"), 0x54),
+        )]
+        fn mvi_should_store_data_in_register(mut cpu: Cpu, r: Reg, val: Word) {
+            cpu.exec(Mvi(r, val));
+
+            assert_eq!(r.ask(&cpu), val);
+        }
+
+        #[rstest]
+        fn mvi_should_store_m_register_to_hl_pointed_address(mut cpu: Cpu) {
+            let address = 0x3421;
+            let val = 0xa2;
+            cpu.set_hl(address);
+
+            cpu.exec(Mvi(Reg::M, val));
+
+            assert_eq!(cpu.bus.read_byte(address), val);
+        }
     }
 
     #[rstest_parametrize(
