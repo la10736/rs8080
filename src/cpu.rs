@@ -524,6 +524,12 @@ impl Cpu {
     fn mvi(&mut self, r: Reg, val: Word) {
         self.reg_set(r, val);
     }
+
+    fn adi(&mut self, val: Word) {
+        let carry = self.state.a.overflow_add(val);
+        self.state.flags.val(Flag::Carry, carry);
+        self.fix_static_flags(Reg::A);
+    }
 }
 
 /// Single Register Instructions
@@ -852,6 +858,9 @@ impl Cpu {
             }
             Mvi(r, val) => {
                 self.mvi(r, val)
+            }
+            Adi(val) => {
+                self.adi(val)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1516,6 +1525,51 @@ mod test {
             cpu.exec(Mvi(Reg::M, val));
 
             assert_eq!(cpu.bus.read_byte(address), val);
+        }
+
+        #[rstest_parametrize(
+        a, data, expected,
+        case(0x34, 0x1f, 0x53),
+        case(0x56, 0xbe, 0x14),
+        )]
+        fn adi_should_add_immediate_data_to_accumulator(mut cpu: Cpu, a:Word, data:Word, expected: Word) {
+            cpu.state.a = a.into();
+
+            cpu.exec(Adi(data));
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest_parametrize(
+        a, data, start, expected,
+        case(0x34, 0x1f, false, false),
+        case(0x34, 0x1f, true, false),
+        case(0x56, 0xbe, false, true),
+        case(0x56, 0xbe, true, true),
+        case(0xff, 0x01, false, true),
+        case(0xa4, 0x02, true, false),
+        case(0xb4, 0x62, true, true),
+        )]
+        fn adi_should_affect_carry_bit(mut cpu: Cpu, a:Word, data:Word, start: bool, expected: bool) {
+            cpu.state.flags.val(Flag::Carry, start);
+            cpu.state.a = a.into();
+
+            cpu.exec(Adi(data));
+
+            assert_eq!(expected, cpu.state.flags.get(Flag::Carry));
+        }
+
+        #[rstest]
+        fn adi_should_fix_static_flags(mut cpu: Cpu) {
+            let a = 0x56;
+            let data = 0xbe;
+            cpu.state.a = a.into();
+
+            cpu.exec(Adi(data));
+
+            assert_eq!(Parity.ask(&cpu), true);
+            assert_eq!(Zero.ask(&cpu), false);
+            assert_eq!(Sign.ask(&cpu), false);
         }
     }
 
