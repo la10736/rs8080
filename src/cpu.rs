@@ -2173,6 +2173,31 @@ mod test {
         assert!(cpu.state.flag(Zero))
     }
 
+    #[test]
+    fn daa_no_carries_set() {
+        unimplemented!()
+    }
+
+    #[test]
+    fn daa_aux_carry_set() {
+        unimplemented!()
+    }
+
+    #[test]
+    fn daa_carry_set() {
+        unimplemented!()
+    }
+
+    #[test]
+    fn daa_both_carry_set() {
+        unimplemented!()
+    }
+
+    #[test]
+    fn who_influence_aux_carry_flag() {
+        unimplemented!()
+    }
+
     #[rstest]
     fn nop_should_just_change_pc(mut cpu: Cpu) {
         let mut state = cpu.state.clone();
