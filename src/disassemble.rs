@@ -101,7 +101,7 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
         Some((self.code_iterator.next()? as u16) | ((self.code_iterator.next()? as u16) << 8))
     }
 
-    fn u8_data(&mut self) -> Option<Word> {
+    fn u8_data(&mut self) -> Option<Byte> {
         self.code_iterator.next().map(|v| v.into())
     }
 }
@@ -130,9 +130,9 @@ mod test {
 
     use rstest::rstest_parametrize;
 
-    fn parse_str_bytes<S: AsRef<str>>(s: S) -> Vec<Word> {
+    fn parse_str_bytes<S: AsRef<str>>(s: S) -> Vec<Byte> {
         s.as_ref().split(' ')
-            .map(|v| Word::from_str_radix(v, 16).unwrap())
+            .map(|v| Byte::from_str_radix(v, 16).unwrap())
             .collect()
     }
 
@@ -384,7 +384,7 @@ mod test {
     case("ff", 0xff, 1, "RST    $38"),
     )
     ]
-    fn opcode_parser(bytes: &str, code: Word, length: u16, desc: &str) {
+    fn opcode_parser(bytes: &str, code: Byte, length: u16, desc: &str) {
         let bytes = parse_str_bytes(bytes);
 
         let d = disassemble(&bytes).unwrap()[0];
@@ -407,7 +407,7 @@ mod test {
     case(0xfd),
     )
     ]
-    fn opcode_that_doesnt_exists(opcode: Word) {
+    fn opcode_that_doesnt_exists(opcode: Byte) {
         let codes = [opcode];
 
         let d = disassemble(&codes);

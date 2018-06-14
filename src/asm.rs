@@ -1,4 +1,4 @@
-use {ToOpcode, Word, Address};
+use {ToOpcode, Byte, Address};
 
 #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
 pub enum Reg {
@@ -12,8 +12,8 @@ pub enum Reg {
     M,
 }
 
-impl From<Word> for Reg {
-    fn from(v: Word) -> Self {
+impl From<Byte> for Reg {
+    fn from(v: Byte) -> Self {
         use self::Reg::*;
         match v {
             0x00 => B,
@@ -30,7 +30,7 @@ impl From<Word> for Reg {
 }
 
 impl ToOpcode for Reg {
-    fn opcode(self) -> Word {
+    fn opcode(self) -> Byte {
         use self::Reg::*;
         match self {
             B => 0x0,
@@ -73,8 +73,8 @@ pub enum RegPair {
     SP,
 }
 
-impl From<Word> for RegPair {
-    fn from(v: Word) -> Self {
+impl From<Byte> for RegPair {
+    fn from(v: Byte) -> Self {
         use self::RegPair::*;
         match v {
             0x00 => BC,
@@ -87,7 +87,7 @@ impl From<Word> for RegPair {
 }
 
 impl ToOpcode for RegPair {
-    fn opcode(self) -> Word {
+    fn opcode(self) -> Byte {
         use self::RegPair::*;
         match self {
             BC => 0x00,
@@ -121,9 +121,9 @@ impl Display for RegPair {
 
 #[derive(PartialOrd, PartialEq, Debug, Copy, Clone)]
 pub enum RegPairValue {
-    BC(Word, Word),
-    DE(Word, Word),
-    HL(Word, Word),
+    BC(Byte, Byte),
+    DE(Byte, Byte),
+    HL(Byte, Byte),
     SP(Address),
 }
 
@@ -151,8 +151,8 @@ impl Into<RegPair> for RegPairValue {
     }
 }
 
-impl From<[Word; 3]> for RegPairValue {
-    fn from(data: [Word; 3]) -> Self {
+impl From<[Byte; 3]> for RegPairValue {
+    fn from(data: [Byte; 3]) -> Self {
         use self::RegPairValue::*;
         match data[0] & 0x30 {
             0x00 => BC(data[2], data[1]),
@@ -165,7 +165,7 @@ impl From<[Word; 3]> for RegPairValue {
 }
 
 impl ToOpcode for RegPairValue {
-    fn opcode(self) -> Word {
+    fn opcode(self) -> Byte {
         let v: RegPair = self.into();
         v.opcode()
     }
@@ -180,7 +180,7 @@ pub enum BytePair {
 }
 
 impl ToOpcode for BytePair {
-    fn opcode(self) -> Word {
+    fn opcode(self) -> Byte {
         use self::BytePair::*;
         match self {
             BC => 0x00,
@@ -191,8 +191,8 @@ impl ToOpcode for BytePair {
     }
 }
 
-impl From<Word> for BytePair {
-    fn from(v: Word) -> Self {
+impl From<Byte> for BytePair {
+    fn from(v: Byte) -> Self {
         use self::BytePair::*;
         match v {
             0x00 => BC,
@@ -230,8 +230,8 @@ pub enum IrqAddr {
     I7,
 }
 
-impl From<Word> for IrqAddr {
-    fn from(c: Word) -> Self {
+impl From<Byte> for IrqAddr {
+    fn from(c: Byte) -> Self {
         use self::IrqAddr::*;
         match c {
             0x00 => I0,
@@ -248,7 +248,7 @@ impl From<Word> for IrqAddr {
 }
 
 impl ToOpcode for IrqAddr {
-    fn opcode(self) -> Word {
+    fn opcode(self) -> Byte {
         use self::IrqAddr::*;
         match self {
             I0 => 0x00,
@@ -264,7 +264,7 @@ impl ToOpcode for IrqAddr {
 }
 
 impl IrqAddr {
-    pub fn irq_address(&self) -> Word {
+    pub fn irq_address(&self) -> Byte {
         use self::IrqAddr::*;
         match *self {
             I0 => 0x00,
@@ -307,8 +307,8 @@ impl Display for CondFlag {
     }
 }
 
-impl From<Word> for CondFlag {
-    fn from(c: Word) -> Self {
+impl From<Byte> for CondFlag {
+    fn from(c: Byte) -> Self {
         use self::CondFlag::*;
         match c {
             0x00 => NZ,
@@ -325,7 +325,7 @@ impl From<Word> for CondFlag {
 }
 
 impl ToOpcode for CondFlag {
-    fn opcode(self) -> Word {
+    fn opcode(self) -> Byte {
         use self::CondFlag::*;
         match self {
             NZ => 0x00,
@@ -353,7 +353,7 @@ pub enum Instruction {
     C(CondFlag, Address),
     Sta(Address),
     Push(BytePair),
-    Mvi(Reg, Word),
+    Mvi(Reg, Byte),
     Rlc,
     Rrc,
     Ral,
@@ -382,22 +382,22 @@ pub enum Instruction {
     Hlt,
     R(CondFlag),
     Pop(BytePair),
-    Adi(Word),
-    Sui(Word),
-    Ani(Word),
-    Ori(Word),
+    Adi(Byte),
+    Sui(Byte),
+    Ani(Byte),
+    Ori(Byte),
     Rst(IrqAddr),
     Ret,
-    In(Word),
-    Out(Word),
-    Sbi(Word),
+    In(Byte),
+    Out(Byte),
+    Sbi(Byte),
     Pchl,
     Xchg,
     Xthl,
     Di,
     Sphl,
     Ei,
-    Cpi(Word),
+    Cpi(Byte),
     Call(Address),
 }
 
@@ -467,7 +467,7 @@ impl Display for Instruction {
 }
 
 impl ToOpcode for Instruction {
-    fn opcode(self) -> Word {
+    fn opcode(self) -> Byte {
         use self::Instruction::*;
         match self {
             Nop => 0x00,

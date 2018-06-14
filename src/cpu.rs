@@ -1,13 +1,13 @@
 use super::{
     Address, asm::{BytePair, Instruction, Instruction::*, Reg, RegPair, RegPairValue},
-    Word,
+    Byte,
 };
 
 use ::std::mem::swap;
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
-struct RegWord {
-    val: Word
+struct RegByte {
+    val: Byte
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
@@ -15,13 +15,13 @@ struct RegAddress {
     val: Address,
 }
 
-impl RegWord {
-    fn overflow_add(&mut self, val: Word) -> bool {
+impl RegByte {
+    fn overflow_add(&mut self, val: Byte) -> bool {
         let (val, carry) = self.val.overflowing_add(val);
         self.val = val;
         carry
     }
-    fn overflow_sub(&mut self, val: Word) -> bool {
+    fn overflow_sub(&mut self, val: Byte) -> bool {
         let (val, carry) = self.val.overflowing_sub(val);
         self.val = val;
         carry
@@ -55,50 +55,50 @@ impl RegWord {
     }
 }
 
-impl ::std::ops::AddAssign<Word> for RegWord {
-    fn add_assign(&mut self, rhs: Word) {
+impl ::std::ops::AddAssign<Byte> for RegByte {
+    fn add_assign(&mut self, rhs: Byte) {
         *self = *self + rhs;
     }
 }
 
-impl ::std::ops::SubAssign<Word> for RegWord {
+impl ::std::ops::SubAssign<Byte> for RegByte {
     fn sub_assign(&mut self, rhs: u8) {
         *self = *self - rhs;
     }
 }
 
-impl ::std::ops::Add<Word> for RegWord {
-    type Output = RegWord;
+impl ::std::ops::Add<Byte> for RegByte {
+    type Output = RegByte;
 
-    fn add(self, rhs: Word) -> <Self as ::std::ops::Add<Word>>::Output {
+    fn add(self, rhs: Byte) -> <Self as ::std::ops::Add<Byte>>::Output {
         let (val, _) = self.val.overflowing_add(rhs);
-        RegWord { val }
+        RegByte { val }
     }
 }
 
-impl ::std::ops::Sub<Word> for RegWord {
-    type Output = RegWord;
+impl ::std::ops::Sub<Byte> for RegByte {
+    type Output = RegByte;
 
-    fn sub(self, rhs: Word) -> <Self as ::std::ops::Sub<Word>>::Output {
+    fn sub(self, rhs: Byte) -> <Self as ::std::ops::Sub<Byte>>::Output {
         let (val, _) = self.val.overflowing_sub(rhs);
-        RegWord { val }
+        RegByte { val }
     }
 }
 
-impl PartialEq<Word> for RegWord {
-    fn eq(&self, other: &Word) -> bool {
+impl PartialEq<Byte> for RegByte {
+    fn eq(&self, other: &Byte) -> bool {
         self.val == *other
     }
 }
 
-impl From<Word> for RegWord {
-    fn from(val: Word) -> Self {
-        RegWord { val }
+impl From<Byte> for RegByte {
+    fn from(val: Byte) -> Self {
+        RegByte { val }
     }
 }
 
-impl Into<Word> for RegWord {
-    fn into(self) -> Word {
+impl Into<Byte> for RegByte {
+    fn into(self) -> Byte {
         self.val
     }
 }
@@ -128,15 +128,15 @@ impl From<Address> for RegAddress {
     }
 }
 
-impl From<(Word, Word)> for RegAddress {
-    fn from(v: (Word, Word)) -> Self {
+impl From<(Byte, Byte)> for RegAddress {
+    fn from(v: (Byte, Byte)) -> Self {
         let (h, l) = v;
         ((h as Address) << 8 | (l as Address)).into()
     }
 }
 
-impl From<(RegWord, RegWord)> for RegAddress {
-    fn from(v: (RegWord, RegWord)) -> Self {
+impl From<(RegByte, RegByte)> for RegAddress {
+    fn from(v: (RegByte, RegByte)) -> Self {
         let (h, l) = v;
         (h.val, l.val).into()
     }
@@ -151,26 +151,26 @@ impl Into<Address> for RegAddress {
 const WORD_SIZE: u8 = 8;
 const WORD_MASK: Address = 0xff;
 
-impl From<RegAddress> for (RegWord, RegWord) {
+impl From<RegAddress> for (RegByte, RegByte) {
     fn from(v: RegAddress) -> Self {
         let inner = v.val;
-        ((((inner >> WORD_SIZE) & WORD_MASK) as Word).into(),
-         ((inner & WORD_MASK) as Word).into())
+        ((((inner >> WORD_SIZE) & WORD_MASK) as Byte).into(),
+         ((inner & WORD_MASK) as Byte).into())
     }
 }
 
-impl Into<(Word, Word)> for RegAddress {
-    fn into(self) -> (Word, Word) {
+impl Into<(Byte, Byte)> for RegAddress {
+    fn into(self) -> (Byte, Byte) {
         let a = self.val;
-        ((a >> 8) as Word, (a & 0xff) as Word)
+        ((a >> 8) as Byte, (a & 0xff) as Byte)
     }
 }
 
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
-struct Flags(Word);
+struct Flags(Byte);
 
 impl Flags {
-    fn mask(f: Flag) -> Word {
+    fn mask(f: Flag) -> Byte {
         0x1 << Self::flag_bit(f)
     }
 
@@ -215,27 +215,27 @@ impl Flags {
     }
 }
 
-impl From<Word> for Flags {
-    fn from(w: Word) -> Self {
+impl From<Byte> for Flags {
+    fn from(w: Byte) -> Self {
         Flags(w)
     }
 }
 
-impl Into<Word> for Flags {
-    fn into(self) -> Word {
+impl Into<Byte> for Flags {
+    fn into(self) -> Byte {
         self.0
     }
 }
 
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
 struct State {
-    a: RegWord,
-    b: RegWord,
-    c: RegWord,
-    d: RegWord,
-    e: RegWord,
-    h: RegWord,
-    l: RegWord,
+    a: RegByte,
+    b: RegByte,
+    c: RegByte,
+    d: RegByte,
+    e: RegByte,
+    h: RegByte,
+    l: RegByte,
     pc: RegAddress,
     sp: RegAddress,
 
@@ -252,25 +252,25 @@ enum Flag {
 }
 
 impl State {
-    fn set_a(&mut self, v: Word) {
+    fn set_a(&mut self, v: Byte) {
         self.a = v.into();
     }
-    fn set_b(&mut self, v: Word) {
+    fn set_b(&mut self, v: Byte) {
         self.b = v.into();
     }
-    fn set_c(&mut self, v: Word) {
+    fn set_c(&mut self, v: Byte) {
         self.c = v.into();
     }
-    fn set_d(&mut self, v: Word) {
+    fn set_d(&mut self, v: Byte) {
         self.d = v.into();
     }
-    fn set_e(&mut self, v: Word) {
+    fn set_e(&mut self, v: Byte) {
         self.e = v.into();
     }
-    fn set_h(&mut self, v: Word) {
+    fn set_h(&mut self, v: Byte) {
         self.h = v.into();
     }
-    fn set_l(&mut self, v: Word) {
+    fn set_l(&mut self, v: Byte) {
         self.l = v.into();
     }
     fn set_pc(&mut self, v: Address) {
@@ -287,12 +287,12 @@ impl State {
         self.flags.get(f)
     }
 
-    fn pack_flags(&self) -> Word {
-        let mask: Word = self.flags.clone().into();
+    fn pack_flags(&self) -> Byte {
+        let mask: Byte = self.flags.clone().into();
         0x02 | mask
     }
 
-    fn unpack_flags(&mut self, flags: Word) {
+    fn unpack_flags(&mut self, flags: Byte) {
         self.flags = flags.into();
     }
 }
@@ -338,7 +338,7 @@ pub struct Cpu {
 
 /// Utilities
 impl Cpu {
-    fn reg(&self, r: self::Reg) -> RegWord {
+    fn reg(&self, r: self::Reg) -> RegByte {
         use self::Reg::*;
         match r {
             A => self.state.a,
@@ -352,7 +352,7 @@ impl Cpu {
         }
     }
 
-    fn reg_set<R: Into<RegWord>>(&mut self, r: self::Reg, val: R) {
+    fn reg_set<R: Into<RegByte>>(&mut self, r: self::Reg, val: R) {
         use self::Reg::*;
         let reg = val.into();
         match r {
@@ -367,7 +367,7 @@ impl Cpu {
         }
     }
 
-    fn reg_apply<F: FnMut(&mut RegWord)>(&mut self, r: self::Reg, mut f: F) {
+    fn reg_apply<F: FnMut(&mut RegByte)>(&mut self, r: self::Reg, mut f: F) {
         let mut val = self.reg(r);
         f(&mut val);
         self.reg_set(r, val);
@@ -439,12 +439,12 @@ impl Cpu {
         self.state.l = l;
     }
 
-    fn get_m(&self) -> RegWord {
+    fn get_m(&self) -> RegByte {
         let address = self.hl().val;
         self.bus.read_byte(address).into()
     }
 
-    fn set_m<W: Into<Word>>(&mut self, val: W) {
+    fn set_m<W: Into<Byte>>(&mut self, val: W) {
         let address = self.hl().val;
         self.bus.write_byte(address, val.into());
     }
@@ -453,7 +453,7 @@ impl Cpu {
         self.reg(r).clone().update_flags(&mut self.state.flags)
     }
 
-    fn push_val(&mut self, val: Word) {
+    fn push_val(&mut self, val: Byte) {
         self.state.sp.overflow_sub(1);
         self.bus.write_byte(self.state.sp.into(), val);
     }
@@ -468,7 +468,7 @@ impl Cpu {
         self.push_val(val);
     }
 
-    fn pop_val(&mut self) -> Word {
+    fn pop_val(&mut self) -> Byte {
         let val = self.bus.read_byte(self.state.sp.into());
         self.state.sp.overflow_add(1);
         val
@@ -521,11 +521,11 @@ impl Cpu {
         }
     }
 
-    fn mvi(&mut self, r: Reg, val: Word) {
+    fn mvi(&mut self, r: Reg, val: Byte) {
         self.reg_set(r, val);
     }
 
-    fn adi(&mut self, val: Word) {
+    fn adi(&mut self, val: Byte) {
         let carry = self.state.a.overflow_add(val);
         self.state.flags.val(Flag::Carry, carry);
         self.fix_static_flags(Reg::A);
@@ -885,32 +885,32 @@ mod test {
             self.proto.clone()
         }
 
-        fn b(mut self, val: Word) -> Self {
+        fn b(mut self, val: Byte) -> Self {
             self.proto.set_b(val);
             self
         }
 
-        fn c(mut self, val: Word) -> Self {
+        fn c(mut self, val: Byte) -> Self {
             self.proto.set_c(val);
             self
         }
 
-        fn d(mut self, val: Word) -> Self {
+        fn d(mut self, val: Byte) -> Self {
             self.proto.set_d(val);
             self
         }
 
-        fn e(mut self, val: Word) -> Self {
+        fn e(mut self, val: Byte) -> Self {
             self.proto.set_e(val);
             self
         }
 
-        fn h(mut self, val: Word) -> Self {
+        fn h(mut self, val: Byte) -> Self {
             self.proto.set_h(val);
             self
         }
 
-        fn l(mut self, val: Word) -> Self {
+        fn l(mut self, val: Byte) -> Self {
             self.proto.set_l(val);
             self
         }
@@ -964,7 +964,7 @@ mod test {
     }
 
     #[derive(PartialEq, Clone, Copy)]
-    enum WordReg {
+    enum ByteReg {
         A,
         B,
         C,
@@ -979,11 +979,11 @@ mod test {
 
     trait QueryResult: PartialEq + Eq + Clone + Copy + ::std::fmt::Debug {}
 
-    impl CpuQuery for WordReg {
-        type Result = Word;
+    impl CpuQuery for ByteReg {
+        type Result = Byte;
 
         fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
-            use self::WordReg::*;
+            use self::ByteReg::*;
             match *self {
                 A => cpu.state.a,
                 B => cpu.state.b,
@@ -1005,7 +1005,7 @@ mod test {
         }
     }
 
-    impl QueryResult for Word {}
+    impl QueryResult for Byte {}
 
     impl QueryResult for Address {}
 
@@ -1022,15 +1022,15 @@ mod test {
     }
 
     impl CpuQuery for Reg {
-        type Result = Word;
+        type Result = Byte;
 
         fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
-            WordReg::from(*self).ask(&cpu)
+            ByteReg::from(*self).ask(&cpu)
         }
     }
 
     impl CpuQuery for BytePair {
-        type Result = (Word, Word);
+        type Result = (Byte, Byte);
 
         fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
             use self::BytePair::*;
@@ -1090,14 +1090,14 @@ mod test {
 
     #[derive(Copy, Clone)]
     enum RegValue {
-        A(Word),
-        B(Word),
-        C(Word),
-        D(Word),
-        E(Word),
-        H(Word),
-        L(Word),
-        M(Word),
+        A(Byte),
+        B(Byte),
+        C(Byte),
+        D(Byte),
+        E(Byte),
+        H(Byte),
+        L(Byte),
+        M(Byte),
     }
 
     impl ApplyState for RegValue {
@@ -1122,7 +1122,7 @@ mod test {
         }
     }
 
-    impl ApplyState for (BytePair, (Word, Word)) {
+    impl ApplyState for (BytePair, (Byte, Byte)) {
         fn apply(&self, cpu: &mut Cpu) {
             let (rp, v) = self.clone();
             use self::BytePair::*;
@@ -1151,8 +1151,8 @@ mod test {
         }
     }
 
-    impl From<(Reg, Word)> for RegValue {
-        fn from(vals: (Reg, Word)) -> Self {
+    impl From<(Reg, Byte)> for RegValue {
+        fn from(vals: (Reg, Byte)) -> Self {
             let (r, v) = vals;
             use self::Reg::*;
             match r {
@@ -1168,18 +1168,18 @@ mod test {
         }
     }
 
-    impl From<Reg> for WordReg {
+    impl From<Reg> for ByteReg {
         fn from(r: Reg) -> Self {
             use self::Reg::*;
             match r {
-                A => WordReg::A,
-                B => WordReg::B,
-                C => WordReg::C,
-                D => WordReg::D,
-                E => WordReg::E,
-                H => WordReg::H,
-                L => WordReg::L,
-                M => WordReg::M,
+                A => ByteReg::A,
+                B => ByteReg::B,
+                C => ByteReg::C,
+                D => ByteReg::D,
+                E => ByteReg::E,
+                H => ByteReg::H,
+                L => ByteReg::L,
+                M => ByteReg::M,
             }
         }
     }
@@ -1275,7 +1275,7 @@ mod test {
         case(Parity, 0x06),
         case(Carry, 0x03),
         )]
-        fn push_should_store_flags_correctly<I: ApplyState>(mut cpu: Cpu, init: I, expected: Word) {
+        fn push_should_store_flags_correctly<I: ApplyState>(mut cpu: Cpu, init: I, expected: Byte) {
             init.apply(&mut cpu);
 
             let flags = cpu.state.pack_flags();
@@ -1347,7 +1347,7 @@ mod test {
         case(DE, 0x02, 0xac),
         case(HL, 0xa3, 0x01),
         )]
-        fn pop_should_recover_all_registers_stored_by_posh(mut cpu: Cpu, r: BytePair, r0: Word, r1: Word) {
+        fn pop_should_recover_all_registers_stored_by_posh(mut cpu: Cpu, r: BytePair, r0: Byte, r1: Byte) {
             (r, (r0, r1)).apply(&mut cpu);
             cpu.exec(Push(r));
             (r, (0x00, 0x00)).apply(&mut cpu);
@@ -1386,9 +1386,9 @@ mod test {
 
         #[rstest_parametrize(
         rp, query, expected,
-        case(Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x10, 0xa7)")),
-        case(Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xe7)")),
-        case(Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0xef)")),
+        case(Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0x10, 0xa7)")),
+        case(Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x20, 0xe7)")),
+        case(Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0x22, 0xef)")),
         case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1235")),
         )]
         fn inx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
@@ -1399,12 +1399,12 @@ mod test {
 
         #[rstest_parametrize(
         init, rp, query, expected,
-        case(Unwrap("RegPairValue::BC(0x00, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x01, 0x00)")),
-        case(Unwrap("RegPairValue::BC(0xff, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x00, 0x00)")),
-        case(Unwrap("RegPairValue::DE(0x12, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x13, 0x00)")),
-        case(Unwrap("RegPairValue::DE(0xff, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x00, 0x00)")),
-        case(Unwrap("RegPairValue::HL(0xae, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xaf, 0x00)")),
-        case(Unwrap("RegPairValue::HL(0xff, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::BC(0x00, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0x01, 0x00)")),
+        case(Unwrap("RegPairValue::BC(0xff, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::DE(0x12, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x13, 0x00)")),
+        case(Unwrap("RegPairValue::DE(0xff, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x00, 0x00)")),
+        case(Unwrap("RegPairValue::HL(0xae, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0xaf, 0x00)")),
+        case(Unwrap("RegPairValue::HL(0xff, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0x00, 0x00)")),
         case(Unwrap("RegPairValue::SP(0xffff)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0x0000),
         )]
         fn inx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
@@ -1419,9 +1419,9 @@ mod test {
 
         #[rstest_parametrize(
         rp, query, expected,
-        case(Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0x10, 0xa5)")),
-        case(Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xe5)")),
-        case(Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x22, 0xed)")),
+        case(Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0x10, 0xa5)")),
+        case(Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x20, 0xe5)")),
+        case(Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0x22, 0xed)")),
         case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1233")),
         )]
         fn dcx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
@@ -1432,12 +1432,12 @@ mod test {
 
         #[rstest_parametrize(
         init, rp, query, expected,
-        case(Unwrap("RegPairValue::BC(0xff, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xfe, 0xff)")),
-        case(Unwrap("RegPairValue::BC(0x00, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xff, 0xff)")),
-        case(Unwrap("RegPairValue::DE(0x12, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x11, 0xff)")),
-        case(Unwrap("RegPairValue::DE(0x00, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0xff, 0xff)")),
-        case(Unwrap("RegPairValue::HL(0xae, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xad, 0xff)")),
-        case(Unwrap("RegPairValue::HL(0x00, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::BC(0xff, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0xfe, 0xff)")),
+        case(Unwrap("RegPairValue::BC(0x00, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::DE(0x12, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x11, 0xff)")),
+        case(Unwrap("RegPairValue::DE(0x00, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0xff, 0xff)")),
+        case(Unwrap("RegPairValue::HL(0xae, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0xad, 0xff)")),
+        case(Unwrap("RegPairValue::HL(0x00, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0xff, 0xff)")),
         case(Unwrap("RegPairValue::SP(0x0000)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0xffff),
         )]
         fn dcx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
@@ -1492,9 +1492,9 @@ mod test {
 
         #[rstest_parametrize(
         rp, query, expected,
-        case(Unwrap("RegPairValue::BC(0xe4, 0xf1)"), Unwrap("(WordReg::B, WordReg::C)"), Unwrap("(0xe4, 0xf1)")),
-        case(Unwrap("RegPairValue::DE(0x20, 0xb1)"), Unwrap("(WordReg::D, WordReg::E)"), Unwrap("(0x20, 0xb1)")),
-        case(Unwrap("RegPairValue::HL(0x02, 0xae)"), Unwrap("(WordReg::H, WordReg::L)"), Unwrap("(0x02, 0xae)")),
+        case(Unwrap("RegPairValue::BC(0xe4, 0xf1)"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0xe4, 0xf1)")),
+        case(Unwrap("RegPairValue::DE(0x20, 0xb1)"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x20, 0xb1)")),
+        case(Unwrap("RegPairValue::HL(0x02, 0xae)"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0x02, 0xae)")),
         case(Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
         )]
         fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
@@ -1510,7 +1510,7 @@ mod test {
         case(Unwrap("Reg::L"), 0x01),
         case(Unwrap("Reg::M"), 0x54),
         )]
-        fn mvi_should_store_data_in_register(mut cpu: Cpu, r: Reg, val: Word) {
+        fn mvi_should_store_data_in_register(mut cpu: Cpu, r: Reg, val: Byte) {
             cpu.exec(Mvi(r, val));
 
             assert_eq!(r.ask(&cpu), val);
@@ -1532,7 +1532,7 @@ mod test {
         case(0x34, 0x1f, 0x53),
         case(0x56, 0xbe, 0x14),
         )]
-        fn adi_should_add_immediate_data_to_accumulator(mut cpu: Cpu, a:Word, data:Word, expected: Word) {
+        fn adi_should_add_immediate_data_to_accumulator(mut cpu: Cpu, a: Byte, data: Byte, expected: Byte) {
             cpu.state.a = a.into();
 
             cpu.exec(Adi(data));
@@ -1550,7 +1550,7 @@ mod test {
         case(0xa4, 0x02, true, false),
         case(0xb4, 0x62, true, true),
         )]
-        fn adi_should_affect_carry_bit(mut cpu: Cpu, a:Word, data:Word, start: bool, expected: bool) {
+        fn adi_should_affect_carry_bit(mut cpu: Cpu, a: Byte, data: Byte, start: bool, expected: bool) {
             cpu.state.flags.val(Flag::Carry, start);
             cpu.state.a = a.into();
 
@@ -1606,14 +1606,14 @@ mod test {
 
         #[rstest_parametrize(
         init, reg, query, expected,
-        case(Unwrap("RegValue::A(0x33)"), Unwrap("Reg::A"), Unwrap("WordReg::A"), 0x34),
-        case(Unwrap("RegValue::B(0x00)"), Unwrap("Reg::B"), Unwrap("WordReg::B"), 0x01),
-        case(Unwrap("RegValue::C(0x23)"), Unwrap("Reg::C"), Unwrap("WordReg::C"), 0x24),
-        case(Unwrap("RegValue::D(0xaf)"), Unwrap("Reg::D"), Unwrap("WordReg::D"), 0xb0),
-        case(Unwrap("RegValue::E(0x01)"), Unwrap("Reg::E"), Unwrap("WordReg::E"), 0x02),
-        case(Unwrap("RegValue::H(0xd1)"), Unwrap("Reg::H"), Unwrap("WordReg::H"), 0xd2),
-        case(Unwrap("RegValue::L(0x53)"), Unwrap("Reg::L"), Unwrap("WordReg::L"), 0x54),
-        case(Unwrap("RegValue::M(0x12)"), Unwrap("Reg::M"), Unwrap("WordReg::M"), 0x13),
+        case(Unwrap("RegValue::A(0x33)"), Unwrap("Reg::A"), Unwrap("ByteReg::A"), 0x34),
+        case(Unwrap("RegValue::B(0x00)"), Unwrap("Reg::B"), Unwrap("ByteReg::B"), 0x01),
+        case(Unwrap("RegValue::C(0x23)"), Unwrap("Reg::C"), Unwrap("ByteReg::C"), 0x24),
+        case(Unwrap("RegValue::D(0xaf)"), Unwrap("Reg::D"), Unwrap("ByteReg::D"), 0xb0),
+        case(Unwrap("RegValue::E(0x01)"), Unwrap("Reg::E"), Unwrap("ByteReg::E"), 0x02),
+        case(Unwrap("RegValue::H(0xd1)"), Unwrap("Reg::H"), Unwrap("ByteReg::H"), 0xd2),
+        case(Unwrap("RegValue::L(0x53)"), Unwrap("Reg::L"), Unwrap("ByteReg::L"), 0x54),
+        case(Unwrap("RegValue::M(0x12)"), Unwrap("Reg::M"), Unwrap("ByteReg::M"), 0x13),
         )]
         fn inr_should_increment_register<I, Q, R>(mut cpu: Cpu, init: I, reg: Reg, query: Q, expected: R)
             where I: ApplyState, R: QueryResult, Q: CpuQuery<Result=R>
@@ -1725,7 +1725,7 @@ mod test {
         case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::B"), 0x32, 0x31),
         case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::M"), 0xaf, 0xae),
         )]
-        fn single_register_command(mut cpu: Cpu, cmd: SRegCmd, reg: Reg, before: Word, after: Word) {
+        fn single_register_command(mut cpu: Cpu, cmd: SRegCmd, reg: Reg, before: Byte, after: Byte) {
             RegValue::from((reg, before)).apply(&mut cpu);
 
             cpu.exec(Instruction::from((cmd, reg)));
@@ -1807,7 +1807,7 @@ mod test {
         case(0x54, Unwrap("Reg::M"), 0x33, 0x87),
         case(0xfd, Unwrap("Reg::C"), 0x04, 0x01),
         )]
-        fn add_should_perform_addition(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+        fn add_should_perform_addition(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
             cpu.state.set_a(start);
             RegValue::from((r, v)).apply(&mut cpu);
 
@@ -1844,8 +1844,8 @@ mod test {
         case(0xfd, false, Unwrap("Reg::C"), 0x04, 0x01),
         case(0xfd, true, Unwrap("Reg::C"), 0x04, 0x02),
         )]
-        fn adc_should_perform_addition_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
-                                                          r: Reg, v: Word, expected: Word) {
+        fn adc_should_perform_addition_by_care_carry_flag(mut cpu: Cpu, start: Byte, carry: bool,
+                                                          r: Reg, v: Byte, expected: Byte) {
             cpu.state.set_a(start);
             cpu.set_carry_state(carry);
             RegValue::from((r, v)).apply(&mut cpu);
@@ -1864,7 +1864,7 @@ mod test {
         case(false, 0x10, true),
         case(true, 0x10, true),
         )]
-        fn adc_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Word, expected: bool) {
+        fn adc_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Byte, expected: bool) {
             cpu.state.set_a(0xf0);
             cpu.set_carry_state(carry);
             cpu.state.set_b(v);
@@ -1880,7 +1880,7 @@ mod test {
         case(0x12, Unwrap("Reg::B"), 0xa0, 0x72),
         case(0x54, Unwrap("Reg::M"), 0x33, 0x21),
         )]
-        fn sub_should_perform_subtraction(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+        fn sub_should_perform_subtraction(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
             cpu.state.set_a(start);
             RegValue::from((r, v)).apply(&mut cpu);
 
@@ -1908,8 +1908,8 @@ mod test {
         case(0xfd, false, Unwrap("Reg::C"), 0x04, 0xf9),
         case(0xfd, true, Unwrap("Reg::C"), 0x04, 0xf8),
         )]
-        fn sbb_should_perform_subtraction_by_care_carry_flag(mut cpu: Cpu, start: Word, carry: bool,
-                                                             r: Reg, v: Word, expected: Word) {
+        fn sbb_should_perform_subtraction_by_care_carry_flag(mut cpu: Cpu, start: Byte, carry: bool,
+                                                             r: Reg, v: Byte, expected: Byte) {
             cpu.state.set_a(start);
             cpu.set_carry_state(carry);
             RegValue::from((r, v)).apply(&mut cpu);
@@ -1928,7 +1928,7 @@ mod test {
         case(false, 0x11, true),
         case(true, 0x11, true),
         )]
-        fn sbb_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Word, expected: bool) {
+        fn sbb_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Byte, expected: bool) {
             cpu.state.set_a(0x10);
             cpu.set_carry_state(carry);
             cpu.state.set_b(v);
@@ -1944,7 +1944,7 @@ mod test {
         case(0xa6, Unwrap("Reg::E"), 0xa2, 0xa2),
         case(0x5a, Unwrap("Reg::M"), 0xff, 0x5a),
         )]
-        fn ana_should_perform_logical_and(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+        fn ana_should_perform_logical_and(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
             cpu.state.set_a(start);
             RegValue::from((r, v)).apply(&mut cpu);
 
@@ -1959,7 +1959,7 @@ mod test {
         case(0xa6, Unwrap("Reg::L"), 0xa2, 0x04),
         case(0x5a, Unwrap("Reg::B"), 0xff, 0xa5),
         )]
-        fn xra_should_perform_logical_xor(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+        fn xra_should_perform_logical_xor(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
             cpu.state.set_a(start);
             RegValue::from((r, v)).apply(&mut cpu);
 
@@ -1975,7 +1975,7 @@ mod test {
         case(0x01, Unwrap("Reg::B"), 0x80, 0x81),
         case(0x00, Unwrap("Reg::B"), 0x00, 0x00),
         )]
-        fn ora_should_perform_logical_or(mut cpu: Cpu, start: Word, r: Reg, v: Word, expected: Word) {
+        fn ora_should_perform_logical_or(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
             cpu.state.set_a(start);
             RegValue::from((r, v)).apply(&mut cpu);
 
@@ -1990,7 +1990,7 @@ mod test {
         case(0x10, Unwrap("Reg::M"), 0x12, false, true),
         case(0x33, Unwrap("Reg::E"), 0x32, false, false),
         )]
-        fn cmp_should(mut cpu: Cpu, a: Word, r: Reg, v: Word, zero: bool, carry: bool) {
+        fn cmp_should(mut cpu: Cpu, a: Byte, r: Reg, v: Byte, zero: bool, carry: bool) {
             cpu.state.set_a(a);
             RegValue::from((r, v)).apply(&mut cpu);
 
@@ -2012,7 +2012,7 @@ mod test {
         case(Unwrap("SRegCmd::Xra"), 0xfe, 0x07),
         case(Unwrap("SRegCmd::Ora"), 0xfe, 0x07),
         )]
-        fn should_update_flags(mut cpu: Cpu, op: SRegCmd, a: Word, b: Word) {
+        fn should_update_flags(mut cpu: Cpu, op: SRegCmd, a: Byte, b: Byte) {
             cpu.state.set_a(a);
             cpu.state.set_b(b);
             cpu.state.flags.set(Zero);
@@ -2092,8 +2092,8 @@ mod test {
         case(Rrc, 0xff, 0xff, true),
         case(Rrc, 0x01, 0x80, true),
         )]
-        fn should_rotate_accumulator(mut cpu: Cpu, op: Instruction, before: Word,
-                                     after: Word, carry: bool) {
+        fn should_rotate_accumulator(mut cpu: Cpu, op: Instruction, before: Byte,
+                                     after: Byte, carry: bool) {
             cpu.state.set_a(before);
 
             cpu.exec(op);
@@ -2116,8 +2116,8 @@ mod test {
         case(Rar, 0x01, false, 0x00, true),
         )]
         fn should_rotate_accumulator_through_carry_bit(mut cpu: Cpu, op: Instruction,
-                                                       before: Word, carry_before: bool,
-                                                       after: Word, carry: bool) {
+                                                       before: Byte, carry_before: bool,
+                                                       after: Byte, carry: bool) {
             cpu.set_carry_state(carry_before);
             cpu.state.set_a(before);
 
