@@ -43,8 +43,6 @@ impl RegByte {
         carry
     }
     fn update_flags(&self, flags: &mut Flags) {
-        use self::Flag::*;
-
         for (f, v) in &[
             (Zero, self.is_zero()),
             (Sign, self.sign_bit()),
@@ -52,6 +50,12 @@ impl RegByte {
         ] {
             flags.val(*f, *v)
         }
+    }
+    fn low(&self) -> Byte {
+        self.val & 0x0f
+    }
+    fn high(&self) -> Byte {
+        self.val & 0xf0
     }
 }
 
@@ -250,6 +254,8 @@ enum Flag {
     Parity,
     Carry,
 }
+
+use self::Flag::*;
 
 impl State {
     fn set_a(&mut self, v: Byte) {
@@ -547,6 +553,23 @@ impl Cpu {
         self.reg_apply(reg, |r| { r.decrement(); });
         self.fix_static_flags(reg);
     }
+
+    fn daa(&mut self) {
+        let low = self.state.a.low();
+        let new_aux = low > 9;
+        if new_aux || self.state.flags.get(AuxCarry) {
+            self.state.a.overflow_add(6);
+        }
+        self.state.flags.val(AuxCarry, new_aux);
+
+        let high = self.state.a.high();
+        let new_carry = high > 0x90;
+        if new_carry || self.state.flags.get(Carry) {
+            self.state.a.overflow_add(0x60);
+        }
+        self.set_carry_state(new_carry);
+        self.fix_static_flags(Reg::A);
+    }
 }
 
 /// Data transfer Instruction
@@ -779,7 +802,7 @@ impl Cpu {
                 self.cma()
             }
             Daa => {
-                unimplemented!("Because nobody use it!")
+                self.daa()
             }
             Nop => {
                 self.nop()
@@ -873,7 +896,6 @@ mod test {
     use rstest::rstest;
     use rstest::rstest_parametrize;
     use super::*;
-    use self::Flag::*;
 
     #[derive(Default)]
     struct StateBuilder {
@@ -2173,29 +2195,66 @@ mod test {
         assert!(cpu.state.flag(Zero))
     }
 
-    #[test]
-    fn daa_no_carries_set() {
-        unimplemented!()
+    #[rstest_parametrize(
+    state, after,
+    case(Unwrap("(0x9b, false, false)"), Unwrap("(0x01, true, true)")),
+    case(Unwrap("(0x00, false, false)"), Unwrap("(0x00, false, false)")),
+    case(Unwrap("(0x99, false, false)"), Unwrap("(0x99, false, false)")),
+    case(Unwrap("(0x0a, false, false)"), Unwrap("(0x10, false, true)")),
+    case(Unwrap("(0xa0, false, false)"), Unwrap("(0x00, true, false)")),
+    case(Unwrap("(0x0b, false, false)"), Unwrap("(0x11, false, true)")),
+    case(Unwrap("(0x75, true, true)"), Unwrap("(0xdb, false, false)")),
+    case(Unwrap("(0xff, false, false)"), Unwrap("(0x05, false, true)")),
+    case(Unwrap("(0x99, true, true)"), Unwrap("(0xff, false, false)")),
+    )]
+    fn daa_should_adjust_accumulator(mut cpu: Cpu,
+                                     state: (Byte, bool, bool),
+                                     after: (Byte, bool, bool)) {
+        let (a, carry, auxcarry) = state;
+        cpu.state.set_a(a);
+        cpu.state.flags.val(Carry, carry);
+        cpu.state.flags.val(AuxCarry, auxcarry);
+
+        cpu.exec(Daa);
+
+        let (a, carry, auxcarry) = after;
+        assert_eq!(cpu.state.a, a);
+        assert_eq!(Carry.ask(&cpu), carry);
+        assert_eq!(AuxCarry.ask(&cpu), auxcarry);
     }
 
-    #[test]
-    fn daa_aux_carry_set() {
-        unimplemented!()
-    }
+    #[rstest]
+    fn daa_should_update_static_flags(mut cpu: Cpu) {
 
-    #[test]
-    fn daa_carry_set() {
-        unimplemented!()
-    }
+        cpu.state.set_a(0x75);
+        cpu.state.flags.set(Carry);
+        cpu.state.flags.set(AuxCarry);
 
-    #[test]
-    fn daa_both_carry_set() {
-        unimplemented!()
+        //Become 0xdb Z=false sign=true parity=true
+        cpu.exec(Daa);
+
+        println!("{:?}", cpu.state.a);
+
+        assert_eq!(Zero.ask(&cpu), false);
+        assert_eq!(Sign.ask(&cpu), true);
+        assert_eq!(Parity.ask(&cpu), true);
     }
 
     #[test]
     fn who_influence_aux_carry_flag() {
-        unimplemented!()
+        panic!("Inr");
+        panic!("Dcr");
+        panic!("Add");
+        panic!("Adc");
+        panic!("Sub");
+        panic!("Sbb");
+        panic!("Xra");
+        panic!("Ora");
+        panic!("Adi");
+        panic!("Aci");
+        panic!("Sui");
+        panic!("Sbi");
+        panic!("Cpi");
     }
 
     #[rstest]
