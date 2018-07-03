@@ -1,9 +1,9 @@
+use ::std::mem::swap;
+use self::Flag::*;
 use super::{
     Address, asm::{BytePair, Instruction, Instruction::*, Reg, RegPair, RegPairValue},
     Byte,
 };
-
-use ::std::mem::swap;
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 struct RegByte {
@@ -255,8 +255,6 @@ enum Flag {
     Carry,
 }
 
-use self::Flag::*;
-
 impl State {
     fn set_a(&mut self, v: Byte) {
         self.a = v.into();
@@ -395,7 +393,7 @@ impl Cpu {
             BC => self.set_bc(address),
             DE => self.set_de(address),
             HL => self.set_hl(address),
-            SP => {self.state.sp = address.into();},
+            SP => { self.state.sp = address.into(); }
         }
     }
 
@@ -764,11 +762,11 @@ impl Cpu {
     }
 
     fn inx(&mut self, rp: RegPair) {
-        self.reg_address_apply(rp, |a| {a.overflow_add(1);});
+        self.reg_address_apply(rp, |a| { a.overflow_add(1); });
     }
 
     fn dcx(&mut self, rp: RegPair) {
-        self.reg_address_apply(rp, |a| {a.overflow_sub(1);});
+        self.reg_address_apply(rp, |a| { a.overflow_sub(1); });
     }
 
     fn xchg(&mut self) {
@@ -1265,6 +1263,7 @@ mod test {
     }
 
     mod pair_register {
+        use self::BytePair::*;
         use super::*;
 
         #[rstest]
@@ -1374,8 +1373,6 @@ mod test {
             assert!(cpu.state.flags.get(Parity));
             assert!(!cpu.state.flags.get(Carry));
         }
-
-        use self::BytePair::*;
 
         #[rstest_parametrize(
         r, r0, r1,
@@ -2239,7 +2236,6 @@ mod test {
 
     #[rstest]
     fn daa_should_update_static_flags(mut cpu: Cpu) {
-
         cpu.state.set_a(0x75);
         cpu.state.flags.set(Carry);
         cpu.state.flags.set(AuxCarry);
