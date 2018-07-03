@@ -547,11 +547,15 @@ impl Cpu {
     fn inr(&mut self, reg: self::Reg) {
         self.reg_apply(reg, |r| { r.increment(); });
         self.fix_static_flags(reg);
+        let auxcarry = self.reg(reg).low() == 0x00;
+        self.state.flags.val(AuxCarry, auxcarry);
     }
 
     fn dcr(&mut self, reg: self::Reg) {
         self.reg_apply(reg, |r| { r.decrement(); });
         self.fix_static_flags(reg);
+        let auxcarry = self.reg(reg).low() == 0x0f;
+        self.state.flags.val(AuxCarry, auxcarry);
     }
 
     fn daa(&mut self) {
@@ -1141,6 +1145,16 @@ mod test {
     impl ApplyState for Flag {
         fn apply(&self, cpu: &mut Cpu) {
             cpu.state.flags.set(*self)
+        }
+    }
+
+    impl<A, B> ApplyState for (A, B) where
+        A: ApplyState,
+        B: ApplyState
+    {
+        fn apply(&self, cpu: &mut Cpu) {
+            self.0.apply(cpu);
+            self.1.apply(cpu);
         }
     }
 
@@ -2240,10 +2254,34 @@ mod test {
         assert_eq!(Parity.ask(&cpu), true);
     }
 
+    #[rstest_parametrize(
+    init, cmd, expected,
+    case(Unwrap("RegValue::B(0xaf)"), Unwrap("Inr(Reg::B)"), true),
+    case(Unwrap("RegValue::D(0xf8)"), Unwrap("Inr(Reg::D)"), false),
+    case(Unwrap("RegValue::D(0xff)"), Unwrap("Inr(Reg::D)"), true),
+    case(Unwrap("RegValue::D(0x0f)"), Unwrap("Inr(Reg::D)"), true),
+    case(Unwrap("RegValue::B(0x0e)"), Unwrap("Inr(Reg::B)"), false),
+    case(Unwrap("RegValue::E(0x30)"), Unwrap("Dcr(Reg::E)"), true),
+    case(Unwrap("RegValue::M(0x43)"), Unwrap("Dcr(Reg::M)"), false),
+    case(Unwrap("RegValue::M(0x00)"), Unwrap("Dcr(Reg::M)"), true),
+    case(Unwrap("RegValue::C(0xa0)"), Unwrap("Dcr(Reg::C)"), true),
+    case(Unwrap("RegValue::C(0x01)"), Unwrap("Dcr(Reg::C)"), false),
+    case(Unwrap("(RegValue::A(0x3d), RegValue::C(0x3d))"), Unwrap("Add(Reg::C)"), true),
+    case(Unwrap("(RegValue::A(0x12), RegValue::B(0x12))"), Unwrap("Add(Reg::B)"), false),
+    case(Unwrap("(RegValue::A(0x14), RegValue::D(0x14))"), Unwrap("Add(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x0f), RegValue::D(0x0f))"), Unwrap("Add(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0xa1), RegValue::H(0xa1))"), Unwrap("Add(Reg::H)"), false),
+    )]
+    fn should_affect_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instruction, expected: bool) {
+        init.apply(&mut cpu);
+
+        cpu.exec(cmd);
+
+        assert_eq!(expected, cpu.state.flags.get(AuxCarry));
+    }
+
     #[test]
     fn who_influence_aux_carry_flag() {
-        panic!("Inr");
-        panic!("Dcr");
         panic!("Add");
         panic!("Adc");
         panic!("Sub");
