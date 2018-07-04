@@ -592,7 +592,7 @@ impl Cpu {
     }
 }
 
-/// Carry
+/// Carry and AuxCarry
 impl Cpu {
     fn carry(&self) -> bool {
         self.state.flag(Flag::Carry)
@@ -609,38 +609,54 @@ impl Cpu {
     fn set_carry_state(&mut self, state: bool) {
         self.state.flags.val(Flag::Carry, state)
     }
+
+    fn aux_carry_clear(&mut self) {
+        self.set_aux_carry_state(false)
+    }
+
+    fn set_aux_carry_state(&mut self, auxcarry: bool) {
+        self.state.flags.val(AuxCarry, auxcarry);
+    }
 }
 
 /// Accumulator
 impl Cpu {
-    fn add(&mut self, r: Reg) {
-        let other = self.reg(r).val;
+    fn accumulator_add(&mut self, other: u8) -> () {
+        let auxcarry = (self.state.a.low() + (other & 0x0f)) > 0x0f;
         let carry = self.state.a.overflow_add(other);
         self.set_carry_state(carry);
+        self.set_aux_carry_state(auxcarry);
         self.fix_static_flags(Reg::A)
+    }
+
+    fn accumulator_sub(&mut self, other: u8) -> () {
+        let auxcarry = self.state.a.low() < (other & 0x0f);
+        let carry = self.state.a.overflow_sub(other);
+        self.set_carry_state(carry);
+        self.set_aux_carry_state(auxcarry);
+        self.fix_static_flags(Reg::A)
+    }
+
+    fn add(&mut self, r: Reg) {
+        let other = self.reg(r).val;
+        self.accumulator_add(other)
     }
 
     fn adc(&mut self, r: Reg) {
         let v = self.reg(r).val;
         let other = if self.carry() { v + 1 } else { v };
-        let carry = self.state.a.overflow_add(other);
-        self.set_carry_state(carry);
-        self.fix_static_flags(Reg::A)
+        self.accumulator_add(other);
     }
 
     fn sub(&mut self, r: Reg) {
         let other = self.reg(r).val;
-        let carry = self.state.a.overflow_sub(other);
-        self.set_carry_state(carry);
-        self.fix_static_flags(Reg::A)
+        self.accumulator_sub(other)
     }
 
     fn sbb(&mut self, r: Reg) {
         let v = self.reg(r).val;
         let other = if self.carry() { v + 1 } else { v };
-        let carry = self.state.a.overflow_sub(other);
-        self.set_carry_state(carry);
-        self.fix_static_flags(Reg::A)
+        self.accumulator_sub(other)
     }
 
     fn ana(&mut self, r: Reg) {
@@ -653,6 +669,7 @@ impl Cpu {
         self.state.a = (self.state.a.val ^ self.reg(r).val).into();
         self.fix_static_flags(Reg::A);
         self.carry_clear();
+        self.aux_carry_clear();
     }
 
     fn ora(&mut self, r: Reg) {
@@ -2262,11 +2279,31 @@ mod test {
     case(Unwrap("RegValue::M(0x00)"), Unwrap("Dcr(Reg::M)"), true),
     case(Unwrap("RegValue::C(0xa0)"), Unwrap("Dcr(Reg::C)"), true),
     case(Unwrap("RegValue::C(0x01)"), Unwrap("Dcr(Reg::C)"), false),
-    case(Unwrap("(RegValue::A(0x3d), RegValue::C(0x3d))"), Unwrap("Add(Reg::C)"), true),
-    case(Unwrap("(RegValue::A(0x12), RegValue::B(0x12))"), Unwrap("Add(Reg::B)"), false),
-    case(Unwrap("(RegValue::A(0x14), RegValue::D(0x14))"), Unwrap("Add(Reg::D)"), true),
-    case(Unwrap("(RegValue::A(0x0f), RegValue::D(0x0f))"), Unwrap("Add(Reg::D)"), true),
-    case(Unwrap("(RegValue::A(0xa1), RegValue::H(0xa1))"), Unwrap("Add(Reg::H)"), false),
+    case(Unwrap("(RegValue::A(0x3d), RegValue::C(0x03))"), Unwrap("Add(Reg::C)"), true),
+    case(Unwrap("(RegValue::A(0x12), RegValue::B(0xf2))"), Unwrap("Add(Reg::B)"), false),
+    case(Unwrap("(RegValue::A(0xa4), RegValue::D(0x0d))"), Unwrap("Add(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x0f), RegValue::D(0x01))"), Unwrap("Add(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x0f), RegValue::H(0xa0))"), Unwrap("Add(Reg::H)"), false),
+    case(Unwrap("(RegValue::A(0x3d), (RegValue::C(0x02), Carry))"), Unwrap("Adc(Reg::C)"), true),
+    case(Unwrap("(RegValue::A(0x12), (RegValue::B(0xfc), Carry))"), Unwrap("Adc(Reg::B)"), false),
+    case(Unwrap("(RegValue::A(0xa4), (RegValue::D(0x0c), Carry))"), Unwrap("Adc(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x0f), (RegValue::D(0x00), Carry))"), Unwrap("Adc(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x0e), (RegValue::H(0xa0), Carry))"), Unwrap("Adc(Reg::H)"), false),
+    case(Unwrap("(RegValue::A(0x37), RegValue::C(0x08))"), Unwrap("Sub(Reg::C)"), true),
+    case(Unwrap("(RegValue::A(0x12), RegValue::B(0xf2))"), Unwrap("Sub(Reg::B)"), false),
+    case(Unwrap("(RegValue::A(0xa4), RegValue::D(0x05))"), Unwrap("Sub(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x00), RegValue::D(0x01))"), Unwrap("Sub(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x01), RegValue::H(0xa0))"), Unwrap("Sub(Reg::H)"), false),
+    case(Unwrap("(RegValue::A(0x37), (RegValue::C(0x07), Carry))"), Unwrap("Sbb(Reg::C)"), true),
+    case(Unwrap("(RegValue::A(0x12), (RegValue::B(0xf1), Carry))"), Unwrap("Sbb(Reg::B)"), false),
+    case(Unwrap("(RegValue::A(0xa4), (RegValue::D(0x04), Carry))"), Unwrap("Sbb(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x00), (RegValue::D(0x00), Carry))"), Unwrap("Sbb(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x01), (RegValue::H(0x9f), Carry))"), Unwrap("Sbb(Reg::H)"), false),
+    case(Unwrap("(RegValue::A(0x37), RegValue::C(0x08))"), Unwrap("Cmp(Reg::C)"), true),
+    case(Unwrap("(RegValue::A(0x12), RegValue::B(0xf2))"), Unwrap("Cmp(Reg::B)"), false),
+    case(Unwrap("(RegValue::A(0xa4), RegValue::D(0x05))"), Unwrap("Cmp(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x00), RegValue::D(0x01))"), Unwrap("Cmp(Reg::D)"), true),
+    case(Unwrap("(RegValue::A(0x01), RegValue::H(0xa0))"), Unwrap("Cmp(Reg::H)"), false),
     )]
     fn should_affect_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instruction, expected: bool) {
         init.apply(&mut cpu);
@@ -2276,14 +2313,22 @@ mod test {
         assert_eq!(expected, cpu.state.flags.get(AuxCarry));
     }
 
+    #[rstest_parametrize(
+    init, cmd, expected,
+    case(Unwrap("RegValue::B(0xaf)"), Unwrap("Xra(Reg::B)")),
+    )]
+    fn should_always_reset_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instruction) {
+        init.apply(&mut cpu);
+        cpu.set_aux_carry_state(true);
+
+        cpu.exec(cmd);
+
+        assert!(!cpu.state.flags.get(AuxCarry));
+    }
+
     #[test]
+    #[ignore]
     fn who_influence_aux_carry_flag() {
-        panic!("Add");
-        panic!("Adc");
-        panic!("Sub");
-        panic!("Sbb");
-        panic!("Xra");
-        panic!("Ora");
         panic!("Adi");
         panic!("Aci");
         panic!("Sui");
