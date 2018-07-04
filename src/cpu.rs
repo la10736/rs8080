@@ -530,9 +530,7 @@ impl Cpu {
     }
 
     fn adi(&mut self, val: Byte) {
-        let carry = self.state.a.overflow_add(val);
-        self.state.flags.val(Flag::Carry, carry);
-        self.fix_static_flags(Reg::A);
+        self.accumulator_add(val);
     }
 }
 
@@ -2304,6 +2302,11 @@ mod test {
     case(Unwrap("(RegValue::A(0xa4), RegValue::D(0x05))"), Unwrap("Cmp(Reg::D)"), true),
     case(Unwrap("(RegValue::A(0x00), RegValue::D(0x01))"), Unwrap("Cmp(Reg::D)"), true),
     case(Unwrap("(RegValue::A(0x01), RegValue::H(0xa0))"), Unwrap("Cmp(Reg::H)"), false),
+    case(Unwrap("RegValue::A(0x3d)"), Unwrap("Adi(0x03)"), true),
+    case(Unwrap("RegValue::A(0x12)"), Unwrap("Adi(0xf2)"), false),
+    case(Unwrap("RegValue::A(0xa4)"), Unwrap("Adi(0x0d)"), true),
+    case(Unwrap("RegValue::A(0x0f)"), Unwrap("Adi(0x01)"), true),
+    case(Unwrap("RegValue::A(0x0f)"), Unwrap("Adi(0xa0)"), false),
     )]
     fn should_affect_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instruction, expected: bool) {
         init.apply(&mut cpu);
@@ -2327,9 +2330,7 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn who_influence_aux_carry_flag() {
-        panic!("Adi");
         panic!("Aci");
         panic!("Sui");
         panic!("Sbi");
