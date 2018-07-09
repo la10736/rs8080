@@ -532,6 +532,24 @@ impl Cpu {
     fn adi(&mut self, val: Byte) {
         self.accumulator_add(val);
     }
+
+    fn aci(&mut self, val: Byte) {
+        let other = if self.carry() {val + 1} else {val};
+        self.accumulator_add(other);
+    }
+
+    fn sui(&mut self, val: Byte) {
+        self.accumulator_sub(val);
+    }
+
+    fn sbi(&mut self, val: Byte) {
+        let other = if self.carry() {val + 1} else {val};
+        self.accumulator_sub(other);
+    }
+
+    fn cpi(&mut self, val: Byte) {
+        self.compare(val.into());
+    }
 }
 
 /// Single Register Instructions
@@ -677,9 +695,18 @@ impl Cpu {
     }
 
     fn cmp(&mut self, r: Reg) {
+        let other = self.reg(r);
+        self.compare(other)
+    }
+
+    fn compare(&mut self, other: RegByte) -> () {
         let old = self.state.a;
-        self.sub(r);
+        let inverse = old.sign_bit() != other.sign_bit();
+        self.accumulator_sub(other.into());
         self.state.a = old;
+        if inverse {
+            self.state.flags.toggle(Carry);
+        }
     }
 }
 
@@ -901,6 +928,18 @@ impl Cpu {
             }
             Adi(val) => {
                 self.adi(val)
+            }
+            Aci(val) => {
+                self.aci(val)
+            }
+            Sui(val) => {
+                self.sui(val)
+            }
+            Sbi(val) => {
+                self.sbi(val)
+            }
+            Cpi(val) => {
+                self.cpi(val)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1847,6 +1886,7 @@ mod test {
         case(0x03, Unwrap("RegValue::E(0xc2)"), Unwrap("Adc(Reg::E)"), 0xc5),
         case(0x03, Unwrap("(RegValue::E(0xc2), Carry)"), Unwrap("Adc(Reg::E)"), 0xc6),
         case(0x12, Unwrap("()"), Unwrap("Adi(0xa0)"), 0xb2),
+        case(0x12, Unwrap("Carry"), Unwrap("Aci(0xa0)"), 0xb3),
         )]
         fn additions_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
         where
@@ -1890,8 +1930,10 @@ mod test {
         case(0x12, Unwrap("()"), Unwrap("Sub(Reg::A)"), 0x0),
         case(0xc2, Unwrap("RegValue::E(0x03)"), Unwrap("Sbb(Reg::E)"), 0xbf),
         case(0xc2, Unwrap("(RegValue::E(0x03), Carry)"), Unwrap("Sbb(Reg::E)"), 0xbe),
+        case(0x32, Unwrap("()"), Unwrap("Sui(0x3)"), 0x2f),
+        case(0x32, Unwrap("Carry"), Unwrap("Sbi(0x2)"), 0x2f),
         )]
-        fn sutraction_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
+        fn subtraction_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
             where
                 I: ApplyState,
         {
@@ -1950,21 +1992,37 @@ mod test {
         }
 
         #[rstest_parametrize(
-        a, r, v, zero, carry,
-        case(0x34, Unwrap("Reg::B"), 0x34, true, false),
-        case(0x10, Unwrap("Reg::M"), 0x12, false, true),
-        case(0x33, Unwrap("Reg::E"), 0x32, false, false),
+        a, v, zero, carry,
+        case(0x34, 0x34, true, false),
+        case(0x10, 0x12, false, true),
+        case(0x33, 0x32, false, false),
+        case(0x10, 0xff, false, false),
+        case(0x83, 0x00, false, true),
         )]
-        fn cmp_should(mut cpu: Cpu, a: Byte, r: Reg, v: Byte, zero: bool, carry: bool) {
+        fn compare_should(mut cpu: Cpu, a: Byte, v: Byte, zero: bool, carry: bool) {
             cpu.state.set_a(a);
-            RegValue::from((r, v)).apply(&mut cpu);
 
-            cpu.exec(Cmp(r));
+            cpu.compare(v.into());
 
             assert_eq!(cpu.state.flag(Zero), zero);
             assert_eq!(cpu.carry(), carry);
             assert_eq!(cpu.state.a, a);
-            assert_eq!(cpu.reg(r), v);
+        }
+
+        #[rstest_parametrize(
+        a, init, cmd, carry,
+        case(0x10, Unwrap("RegValue::B(0x12)"), Unwrap("Cmp(Reg::B)"), true),
+        case(0x10, Unwrap("RegValue::E(0xff)"), Unwrap("Cmp(Reg::E)"), false),
+        case(0x10, Unwrap("()"), Unwrap("Cpi(0x12)"), true),
+        case(0x10, Unwrap("()"), Unwrap("Cpi(0xff)"), false),
+        )]
+        fn compare_ops<I: ApplyState>(mut cpu: Cpu, a: Byte, init: I, cmd: Instruction, carry: bool) {
+            cpu.state.set_a(a);
+            init.apply(&mut cpu);
+
+            cpu.exec(cmd);
+
+            assert_eq!(cpu.carry(), carry);
         }
 
         #[rstest_parametrize(
@@ -2224,6 +2282,17 @@ mod test {
     case(Unwrap("RegValue::A(0xa4)"), Unwrap("Adi(0x0d)"), true),
     case(Unwrap("RegValue::A(0x0f)"), Unwrap("Adi(0x01)"), true),
     case(Unwrap("RegValue::A(0x0f)"), Unwrap("Adi(0xa0)"), false),
+    case(Unwrap("(RegValue::A(0x3c), Carry)"), Unwrap("Aci(0x03)"), true),
+    case(Unwrap("RegValue::A(0x3c)"), Unwrap("Aci(0x03)"), false),
+    case(Unwrap("RegValue::A(0x37)"), Unwrap("Sui(0x08)"), true),
+    case(Unwrap("RegValue::A(0x12)"), Unwrap("Sui(0xf2)"), false),
+    case(Unwrap("(RegValue::A(0x37), Carry)"), Unwrap("Sbi(0x07)"), true),
+    case(Unwrap("(RegValue::A(0x12), Carry)"), Unwrap("Sbi(0xf1)"), false),
+    case(Unwrap("RegValue::A(0x37)"), Unwrap("Cpi(0x08)"), true),
+    case(Unwrap("RegValue::A(0x12)"), Unwrap("Cpi(0xf2)"), false),
+    case(Unwrap("RegValue::A(0xa4)"), Unwrap("Cpi(0x05)"), true),
+    case(Unwrap("RegValue::A(0x00)"), Unwrap("Cpi(0x01)"), true),
+    case(Unwrap("RegValue::A(0x01)"), Unwrap("Cpi(0xa0)"), false),
     )]
     fn should_affect_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instruction, expected: bool) {
         init.apply(&mut cpu);
@@ -2244,14 +2313,6 @@ mod test {
         cpu.exec(cmd);
 
         assert!(!cpu.state.flags.get(AuxCarry));
-    }
-
-    #[test]
-    fn who_influence_aux_carry_flag() {
-        panic!("Aci");
-        panic!("Sui");
-        panic!("Sbi");
-        panic!("Cpi");
     }
 
     #[rstest]
