@@ -1574,51 +1574,6 @@ mod test {
 
             assert_eq!(cpu.bus.read_byte(address), val);
         }
-
-        #[rstest_parametrize(
-        a, data, expected,
-        case(0x34, 0x1f, 0x53),
-        case(0x56, 0xbe, 0x14),
-        )]
-        fn adi_should_add_immediate_data_to_accumulator(mut cpu: Cpu, a: Byte, data: Byte, expected: Byte) {
-            cpu.state.a = a.into();
-
-            cpu.exec(Adi(data));
-
-            assert_eq!(cpu.state.a, expected);
-        }
-
-        #[rstest_parametrize(
-        a, data, start, expected,
-        case(0x34, 0x1f, false, false),
-        case(0x34, 0x1f, true, false),
-        case(0x56, 0xbe, false, true),
-        case(0x56, 0xbe, true, true),
-        case(0xff, 0x01, false, true),
-        case(0xa4, 0x02, true, false),
-        case(0xb4, 0x62, true, true),
-        )]
-        fn adi_should_affect_carry_bit(mut cpu: Cpu, a: Byte, data: Byte, start: bool, expected: bool) {
-            cpu.state.flags.val(Flag::Carry, start);
-            cpu.state.a = a.into();
-
-            cpu.exec(Adi(data));
-
-            assert_eq!(expected, cpu.state.flags.get(Flag::Carry));
-        }
-
-        #[rstest]
-        fn adi_should_fix_static_flags(mut cpu: Cpu) {
-            let a = 0x56;
-            let data = 0xbe;
-            cpu.state.a = a.into();
-
-            cpu.exec(Adi(data));
-
-            assert_eq!(Parity.ask(&cpu), true);
-            assert_eq!(Zero.ask(&cpu), false);
-            assert_eq!(Sign.ask(&cpu), false);
-        }
     }
 
     #[rstest_parametrize(
@@ -1850,95 +1805,77 @@ mod test {
         use super::*;
 
         #[rstest_parametrize(
-        start, r, v, expected,
-        case(0x12, Unwrap("Reg::B"), 0xa0, 0xb2),
-        case(0x54, Unwrap("Reg::M"), 0x33, 0x87),
-        case(0xfd, Unwrap("Reg::C"), 0x04, 0x01),
+        start, value, expected,
+        case(0x12, 0xa0, 0xb2),
+        case(0x54, 0x33, 0x87),
+        case(0xfd, 0x04, 0x01),
         )]
-        fn add_should_perform_addition(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
+        fn accumulator_add_should_perform_addition(mut cpu: Cpu, start: Byte, value: Byte, expected: Byte) {
             cpu.state.set_a(start);
-            RegValue::from((r, v)).apply(&mut cpu);
 
-            cpu.exec(Add(r));
+            cpu.accumulator_add(value);
 
             assert_eq!(cpu.state.a, expected);
         }
 
         #[rstest]
-        fn add_should_double_accumulator_when_refer_itself(mut cpu: Cpu) {
-            cpu.state.set_a(0x26);
-
-            cpu.exec(Add(Reg::A));
-
-            assert_eq!(cpu.state.a, 0x4c);
-        }
-
-        #[rstest]
-        fn add_should_update_the_carry_flag(mut cpu: Cpu) {
+        fn accumulator_add_should_update_the_carry_flag(mut cpu: Cpu) {
             cpu.state.set_a(0xf0);
-            cpu.state.set_b(0x13);
 
-            cpu.add(Reg::B);
+            cpu.accumulator_add(0x13);
 
             assert!(cpu.carry());
         }
 
-        #[rstest_parametrize(
-        start, carry, r, v, expected,
-        case(0x12, false, Unwrap("Reg::B"), 0xa0, 0xb2),
-        case(0x12, true, Unwrap("Reg::B"), 0xa0, 0xb3),
-        case(0x54, false, Unwrap("Reg::M"), 0x33, 0x87),
-        case(0x54, true, Unwrap("Reg::M"), 0x33, 0x88),
-        case(0xfd, false, Unwrap("Reg::C"), 0x04, 0x01),
-        case(0xfd, true, Unwrap("Reg::C"), 0x04, 0x02),
-        )]
-        fn adc_should_perform_addition_by_care_carry_flag(mut cpu: Cpu, start: Byte, carry: bool,
-                                                          r: Reg, v: Byte, expected: Byte) {
-            cpu.state.set_a(start);
-            cpu.set_carry_state(carry);
-            RegValue::from((r, v)).apply(&mut cpu);
+        #[rstest]
+        fn accumulator_add_should_fix_static_flags(mut cpu: Cpu) {
+            let a = 0x56;
+            let data = 0xbe;
+            cpu.state.a = a.into();
 
-            cpu.exec(Adc(r));
+            cpu.accumulator_add(data);
 
-            assert_eq!(cpu.state.a, expected);
+            assert_eq!(Parity.ask(&cpu), true);
+            assert_eq!(Zero.ask(&cpu), false);
+            assert_eq!(Sign.ask(&cpu), false);
         }
 
         #[rstest_parametrize(
-        carry, v, expected,
-        case(false, 0x01, false),
-        case(true, 0x01, false),
-        case(false, 0x0f, false),
-        case(true, 0x0f, true),
-        case(false, 0x10, true),
-        case(true, 0x10, true),
+        start, init, cmd, expected,
+        case(0x12, Unwrap("RegValue::B(0xa0)"), Unwrap("Add(Reg::B)"), 0xb2),
+        case(0x12, Unwrap("()"), Unwrap("Add(Reg::A)"), 0x24),
+        case(0x03, Unwrap("RegValue::E(0xc2)"), Unwrap("Adc(Reg::E)"), 0xc5),
+        case(0x03, Unwrap("(RegValue::E(0xc2), Carry)"), Unwrap("Adc(Reg::E)"), 0xc6),
+        case(0x12, Unwrap("()"), Unwrap("Adi(0xa0)"), 0xb2),
         )]
-        fn adc_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Byte, expected: bool) {
-            cpu.state.set_a(0xf0);
-            cpu.set_carry_state(carry);
-            cpu.state.set_b(v);
+        fn additions_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
+        where
+            I: ApplyState,
+        {
+            cpu.state.set_a(start);
+            init.apply(&mut cpu);
 
-            cpu.exec(Adc(Reg::B));
+            cpu.exec(cmd);
 
-            assert_eq!(cpu.carry(), expected);
+            assert_eq!(expected, cpu.state.a.val);
         }
 
         #[rstest_parametrize(
-        start, r, v, expected,
-        case(0xfd, Unwrap("Reg::C"), 0x04, 0xf9),
-        case(0x12, Unwrap("Reg::B"), 0xa0, 0x72),
-        case(0x54, Unwrap("Reg::M"), 0x33, 0x21),
+        start, value, expected,
+        case(0xfd, 0x04, 0xf9),
+        case(0x12, 0xa0, 0x72),
+        case(0x54, 0x33, 0x21),
         )]
-        fn sub_should_perform_subtraction(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
+        fn accumulator_sub_should_perform_subtraction(mut cpu: Cpu, start: Byte, value: Byte, expected: Byte) {
             cpu.state.set_a(start);
-            RegValue::from((r, v)).apply(&mut cpu);
 
-            cpu.exec(Sub(r));
+            cpu.accumulator_sub(value);
 
             assert_eq!(cpu.state.a, expected);
         }
 
         #[rstest]
-        fn sub_should_update_carry_flag(mut cpu: Cpu) {
+        fn accumulator_sub_should_update_carry_flag(mut cpu: Cpu) {
             cpu.state.set_a(0x10);
             cpu.state.set_b(0x13);
 
@@ -1948,42 +1885,22 @@ mod test {
         }
 
         #[rstest_parametrize(
-        start, carry, r, v, expected,
-        case(0xa2, false, Unwrap("Reg::B"), 0xa0, 0x02),
-        case(0xa2, true, Unwrap("Reg::B"), 0xa0, 0x01),
-        case(0x33, false, Unwrap("Reg::M"), 0x54, 0xdf),
-        case(0x33, true, Unwrap("Reg::M"), 0x54, 0xde),
-        case(0xfd, false, Unwrap("Reg::C"), 0x04, 0xf9),
-        case(0xfd, true, Unwrap("Reg::C"), 0x04, 0xf8),
+        start, init, cmd, expected,
+        case(0x32, Unwrap("RegValue::B(0x03)"), Unwrap("Sub(Reg::B)"), 0x2f),
+        case(0x12, Unwrap("()"), Unwrap("Sub(Reg::A)"), 0x0),
+        case(0xc2, Unwrap("RegValue::E(0x03)"), Unwrap("Sbb(Reg::E)"), 0xbf),
+        case(0xc2, Unwrap("(RegValue::E(0x03), Carry)"), Unwrap("Sbb(Reg::E)"), 0xbe),
         )]
-        fn sbb_should_perform_subtraction_by_care_carry_flag(mut cpu: Cpu, start: Byte, carry: bool,
-                                                             r: Reg, v: Byte, expected: Byte) {
+        fn sutraction_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
+            where
+                I: ApplyState,
+        {
             cpu.state.set_a(start);
-            cpu.set_carry_state(carry);
-            RegValue::from((r, v)).apply(&mut cpu);
+            init.apply(&mut cpu);
 
-            cpu.sbb(r);
+            cpu.exec(cmd);
 
-            assert_eq!(cpu.state.a, expected);
-        }
-
-        #[rstest_parametrize(
-        carry, v, expected,
-        case(false, 0x01, false),
-        case(true, 0x01, false),
-        case(false, 0x10, false),
-        case(true, 0x10, true),
-        case(false, 0x11, true),
-        case(true, 0x11, true),
-        )]
-        fn sbb_should_update_carry_flag(mut cpu: Cpu, carry: bool, v: Byte, expected: bool) {
-            cpu.state.set_a(0x10);
-            cpu.set_carry_state(carry);
-            cpu.state.set_b(v);
-
-            cpu.sbb(Reg::B);
-
-            assert_eq!(cpu.carry(), expected);
+            assert_eq!(expected, cpu.state.a.val);
         }
 
         #[rstest_parametrize(
