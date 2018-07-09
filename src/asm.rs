@@ -390,6 +390,7 @@ pub enum Instruction {
     Ret,
     In(Byte),
     Out(Byte),
+    Aci(Byte),
     Sbi(Byte),
     Pchl,
     Xchg,
@@ -428,6 +429,7 @@ impl Display for Instruction {
             Ori(data) => write!(f, "ORI    #0x{:02x}", data),
             In(data) => write!(f, "IN     #0x{:02x}", data),
             Out(data) => write!(f, "OUT    #0x{:02x}", data),
+            Aci(data) => write!(f, "ACI    #0x{:02x}", data),
             Sbi(data) => write!(f, "SBI    #0x{:02x}", data),
             Cpi(data) => write!(f, "CPI    #0x{:02x}", data),
             Call(data) => write!(f, "CALL   ${:02x}", data),
@@ -519,6 +521,7 @@ impl ToOpcode for Instruction {
             Call(_) => 0xcd,
             In(_) => 0xdb,
             Out(_) => 0xd3,
+            Aci(_) => 0xce,
             Sbi(_) => 0xde,
             Pchl => 0xe9,
             Xthl => 0xe3,
@@ -540,7 +543,7 @@ impl Instruction {
             Jump(_) | J(_, _) | C(_, _) | Sta(_) |
             Lda(_) | Shld(_) | Lhld(_) | Lxi(_) | Call(_) => 3,
             Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) |
-            In(_) | Out(_) | Sbi(_) | Cpi(_) => 2,
+            In(_) | Out(_) | Aci(_)  | Sbi(_) | Cpi(_) => 2,
             _ => 1
         }
     }
