@@ -386,6 +386,7 @@ pub enum Instruction {
     Sui(Byte),
     Ani(Byte),
     Ori(Byte),
+    Xri(Byte),
     Rst(IrqAddr),
     Ret,
     In(Byte),
@@ -427,6 +428,7 @@ impl Display for Instruction {
             Sui(data) => write!(f, "SUI    #0x{:02x}", data),
             Ani(data) => write!(f, "ANI    #0x{:02x}", data),
             Ori(data) => write!(f, "ORI    #0x{:02x}", data),
+            Xri(data) => write!(f, "XRI    #0x{:02x}", data),
             In(data) => write!(f, "IN     #0x{:02x}", data),
             Out(data) => write!(f, "OUT    #0x{:02x}", data),
             Aci(data) => write!(f, "ACI    #0x{:02x}", data),
@@ -490,6 +492,7 @@ impl ToOpcode for Instruction {
             Adi(_) => 0xc6,
             Sui(_) => 0xd6,
             Ani(_) => 0xe6,
+            Xri(_) => 0xee,
             Ori(_) => 0xf6,
             Rlc => 0x07,
             Rrc => 0x0f,
@@ -542,7 +545,7 @@ impl Instruction {
         match *self {
             Jump(_) | J(_, _) | C(_, _) | Sta(_) |
             Lda(_) | Shld(_) | Lhld(_) | Lxi(_) | Call(_) => 3,
-            Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Ori(_) |
+            Mvi(_, _) | Adi(_) | Sui(_) | Ani(_) | Xri(_) | Ori(_) |
             In(_) | Out(_) | Aci(_)  | Sbi(_) | Cpi(_) => 2,
             _ => 1
         }

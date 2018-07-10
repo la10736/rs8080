@@ -682,16 +682,34 @@ impl Cpu {
     }
 
     fn xra(&mut self, r: Reg) {
-        self.state.a = (self.state.a.val ^ self.reg(r).val).into();
-        self.fix_static_flags(Reg::A);
-        self.carry_clear();
-        self.aux_carry_clear();
+        let other = self.reg(r).val;
+        self.accumulator_xor(other);
     }
 
     fn ora(&mut self, r: Reg) {
-        self.state.a = (self.state.a.val | self.reg(r).val).into();
+        let other = self.reg(r).val;
+        self.accumulator_or(other);
+    }
+
+    fn xri(&mut self, other: Byte) {
+        self.accumulator_xor(other);
+    }
+
+    fn ori(&mut self, other: Byte) {
+        self.accumulator_or(other);
+    }
+
+    fn accumulator_or(&mut self, other: u8) {
+        self.state.a = (self.state.a.val | other).into();
         self.fix_static_flags(Reg::A);
         self.carry_clear();
+    }
+
+    fn accumulator_xor(&mut self, other: u8) {
+        self.state.a = (self.state.a.val ^ other).into();
+        self.fix_static_flags(Reg::A);
+        self.carry_clear();
+        self.aux_carry_clear();
     }
 
     fn cmp(&mut self, r: Reg) {
@@ -937,6 +955,12 @@ impl Cpu {
             }
             Sbi(val) => {
                 self.sbi(val)
+            }
+            Xri(val) => {
+                self.xri(val)
+            }
+            Ori(val) => {
+                self.ori(val)
             }
             Cpi(val) => {
                 self.cpi(val)
@@ -1934,32 +1958,50 @@ mod test {
         }
 
         #[rstest_parametrize(
-        start, r, v, expected,
-        case(0x81, Unwrap("Reg::H"), 0x7e, 0xff),
-        case(0xa6, Unwrap("Reg::L"), 0xa2, 0x04),
-        case(0x5a, Unwrap("Reg::B"), 0xff, 0xa5),
+        start, other, expected,
+        case(0x81, 0x7e, 0xff),
+        case(0xa6, 0xa2, 0x04),
+        case(0x5a, 0xff, 0xa5),
         )]
-        fn xra_should_perform_logical_xor(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
+        fn accumulator_xor_should_perform_logical_xor(mut cpu: Cpu, start: Byte, other: Byte, expected: Byte)
+        {
             cpu.state.set_a(start);
-            RegValue::from((r, v)).apply(&mut cpu);
 
-            cpu.exec(Xra(r));
+            cpu.accumulator_xor(other);
 
             assert_eq!(cpu.state.a, expected);
         }
 
         #[rstest_parametrize(
-        start, r, v, expected,
-        case(0x81, Unwrap("Reg::H"), 0x7e, 0xff),
-        case(0xa6, Unwrap("Reg::L"), 0xa2, 0xa6),
-        case(0x01, Unwrap("Reg::B"), 0x80, 0x81),
-        case(0x00, Unwrap("Reg::B"), 0x00, 0x00),
+        start, other, expected,
+        case(0x81, 0x7e, 0xff),
+        case(0xa6, 0xa2, 0xa6),
+        case(0x01, 0x80, 0x81),
+        case(0x00, 0x00, 0x00),
         )]
-        fn ora_should_perform_logical_or(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
+        fn accumulator_or_should_perform_logical_or(mut cpu: Cpu, start: Byte, other: Byte, expected: Byte) {
             cpu.state.set_a(start);
-            RegValue::from((r, v)).apply(&mut cpu);
 
-            cpu.exec(Ora(r));
+            cpu.accumulator_or(other);
+
+            assert_eq!(cpu.state.a, expected);
+        }
+
+        #[rstest_parametrize(
+        start, init, cmd, expected,
+        case(0xa6, Unwrap("RegValue::L(0xa2)"), Unwrap("Xra(Reg::L)"), 0x04),
+        case(0x81, Unwrap("RegValue::H(0x7e)"), Unwrap("Ora(Reg::H)"), 0xff),
+        case(0xa6, Unwrap("()"), Unwrap("Xri(0xa2)"), 0x04),
+        case(0x81, Unwrap("()"), Unwrap("Ori(0x7e)"), 0xff),
+        )]
+        fn bit_logic_integration<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
+            where
+                I: ApplyState
+        {
+            cpu.state.set_a(start);
+            init.apply(&mut cpu);
+
+            cpu.exec(cmd);
 
             assert_eq!(cpu.state.a, expected);
         }
