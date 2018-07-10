@@ -1286,36 +1286,6 @@ mod test {
         }
     }
 
-    #[derive(Copy, Clone)]
-    enum SRegCmd {
-        Inr,
-        Dcr,
-        Add,
-        Adc,
-        Sub,
-        Sbb,
-        Ana,
-        Xra,
-        Ora,
-    }
-
-    impl From<(SRegCmd, Reg)> for Instruction {
-        fn from(vals: (SRegCmd, Reg)) -> Self {
-            let (cmd, r) = vals;
-            match cmd {
-                SRegCmd::Inr => Inr(r),
-                SRegCmd::Dcr => Dcr(r),
-                SRegCmd::Add => Add(r),
-                SRegCmd::Adc => Adc(r),
-                SRegCmd::Sub => Sub(r),
-                SRegCmd::Sbb => Sbb(r),
-                SRegCmd::Ana => Ana(r),
-                SRegCmd::Xra => Xra(r),
-                SRegCmd::Ora => Ora(r),
-            }
-        }
-    }
-
     mod pair_register {
         use self::BytePair::*;
         use super::*;
@@ -1762,17 +1732,20 @@ mod test {
         }
 
         #[rstest_parametrize(
-        cmd, reg, before, after,
-        case(Unwrap("SRegCmd::Inr"), Unwrap("Reg::A"), 0xa3, 0xa4),
-        case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::B"), 0x32, 0x31),
-        case(Unwrap("SRegCmd::Dcr"), Unwrap("Reg::M"), 0xaf, 0xae),
+        cmd, init, after,
+        case(Unwrap("Inr(Reg::A)"), Unwrap("RegValue::A(0xa3)"), 0xa4),
+        case(Unwrap("Dcr(Reg::B)"), Unwrap("RegValue::B(0x32)"), 0x31),
+        case(Unwrap("Dcr(Reg::M)"), Unwrap("RegValue::M(0xaf)"), 0xae),
         )]
-        fn single_register_command(mut cpu: Cpu, cmd: SRegCmd, reg: Reg, before: Byte, after: Byte) {
-            RegValue::from((reg, before)).apply(&mut cpu);
+        fn single_register_command<I>(mut cpu: Cpu, cmd: Instruction, init: I, after: Byte)
+        where
+            I: ApplyState + Into<Reg>
+        {
+            init.apply(&mut cpu);
 
-            cpu.exec(Instruction::from((cmd, reg)));
+            cpu.exec(cmd);
 
-            assert_eq!(reg.ask(&cpu), after);
+            assert_eq!(init.into().ask(&cpu), after);
         }
     }
 
@@ -2026,21 +1999,21 @@ mod test {
         }
 
         #[rstest_parametrize(
-        op, a, b,
-        case(Unwrap("SRegCmd::Add"), 0xfe, 0x01),
-        case(Unwrap("SRegCmd::Adc"), 0xfe, 0x01),
-        case(Unwrap("SRegCmd::Sub"), 0x01, 0x02),
-        case(Unwrap("SRegCmd::Sbb"), 0x01, 0x02),
-        case(Unwrap("SRegCmd::Ana"), 0xfe, 0xf6),
-        case(Unwrap("SRegCmd::Xra"), 0xfe, 0x07),
-        case(Unwrap("SRegCmd::Ora"), 0xfe, 0x07),
+        cmd, a, b,
+        case(Unwrap("Add(Reg::B)"), 0xfe, 0x01),
+        case(Unwrap("Adc(Reg::B)"), 0xfe, 0x01),
+        case(Unwrap("Sub(Reg::B)"), 0x01, 0x02),
+        case(Unwrap("Sbb(Reg::B)"), 0x01, 0x02),
+        case(Unwrap("Ana(Reg::B)"), 0xfe, 0xf6),
+        case(Unwrap("Xra(Reg::B)"), 0xfe, 0x07),
+        case(Unwrap("Ora(Reg::B)"), 0xfe, 0x07),
         )]
-        fn should_update_flags(mut cpu: Cpu, op: SRegCmd, a: Byte, b: Byte) {
+        fn should_update_flags(mut cpu: Cpu, cmd: Instruction, a: Byte, b: Byte) {
+
             cpu.state.set_a(a);
             cpu.state.set_b(b);
             cpu.state.flags.set(Zero);
 
-            let cmd = (op, Reg::B).into();
             cpu.exec(cmd);
 
             assert!(!cpu.state.flag(Zero));
@@ -2049,17 +2022,15 @@ mod test {
         }
 
         #[rstest_parametrize(
-        op,
-        case(Unwrap("SRegCmd::Ana")),
-        case(Unwrap("SRegCmd::Xra")),
-        case(Unwrap("SRegCmd::Ora")),
+        cmd,
+        case(Unwrap("Ana(Reg::B)")),
+        case(Unwrap("Xra(Reg::B)")),
+        case(Unwrap("Ora(Reg::B)")),
         )]
-        fn should_reset_carry_flag(mut cpu: Cpu, op: SRegCmd) {
+        fn should_reset_carry_flag(mut cpu: Cpu, cmd: Instruction) {
             cpu.state.set_a(0xae);
             cpu.state.set_b(0x36);
             cpu.carry_set();
-
-            let cmd = (op, Reg::B).into();
 
             cpu.exec(cmd);
 
