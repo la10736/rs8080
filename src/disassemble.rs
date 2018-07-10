@@ -77,6 +77,7 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             0xd3 => Out(self.u8_data()?),
             0xd6 => Sui(self.u8_data()?),
             0xdb => In(self.u8_data()?),
+            0xde => Sbi(self.u8_data()?),
             0xe3 => Xthl,
             0xe6 => Ani(self.u8_data()?),
             0xe9 => Pchl,
