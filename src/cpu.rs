@@ -321,6 +321,17 @@ impl MemoryBus {
         self.bank[address as usize] = val
     }
 
+    fn read_word(&self, address: Address) -> u16 {
+        let addr = address as usize;
+        ((self.bank[addr] as u16) << 8) | (self.bank[addr + 1] as u16)
+    }
+
+    fn write_word(&mut self, address: Address, val: u16) {
+        let addr = address as usize;
+        self.bank[addr] = (val >> 8) as u8;
+        self.bank[addr + 1] = (val & 0xff) as u8;
+    }
+
     fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) {
         data.as_ref().iter().enumerate().for_each(
             |(off, v)|
@@ -845,6 +856,29 @@ impl Cpu {
     }
 }
 
+/// Direct Addressing Instructions
+impl Cpu {
+    fn sta(&mut self, address: Address) {
+        let value = self.state.a.val;
+        self.bus.write_byte(address, value);
+    }
+
+    fn lda(&mut self, address: Address) {
+        self.state.a = self.bus.read_byte(address).into();
+    }
+
+    fn shld(&mut self, address: Address) {
+        let hl = self.hl().into();
+        let bus = &mut self.bus;
+        bus.write_word(address, hl);
+    }
+
+    fn lhld(&mut self, address: Address) {
+        self.state.h = self.bus.read_byte(address).into();
+        self.state.l = self.bus.read_byte(address + 1).into();
+    }
+}
+
 impl Cpu {
     pub fn exec(&mut self, instruction: Instruction) {
         match instruction {
@@ -964,6 +998,18 @@ impl Cpu {
             }
             Cpi(val) => {
                 self.cpi(val)
+            }
+            Sta(address) => {
+                self.sta(address)
+            }
+            Lda(address) => {
+                self.lda(address)
+            }
+            Shld(address) => {
+                self.shld(address)
+            }
+            Lhld(address) => {
+                self.lhld(address)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -1155,6 +1201,14 @@ mod test {
             match *self {
                 (ref r0, ref r1) => (r0.ask(&cpu), r1.ask(&cpu))
             }
+        }
+    }
+
+    impl CpuQuery for Address {
+        type Result = Byte;
+
+        fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
+            cpu.bus.read_byte(*self)
         }
     }
 
@@ -2164,6 +2218,49 @@ mod test {
         }
     }
 
+    #[rstest]
+    fn sta_should_store_accumulator(mut cpu: Cpu) {
+        let accumulator = 0xae;
+        let addr = 0x320f;
+        cpu.state.set_a(accumulator);
+
+        cpu.exec(Sta(addr));
+
+        assert_eq!(accumulator, cpu.bus.read_byte(addr));
+    }
+
+    #[rstest]
+    fn lda_should_load_accumulator(mut cpu: Cpu) {
+        let expected = 0xae;
+        let addr = 0x320f;
+        cpu.bus.write_byte(addr, expected);
+
+        cpu.exec(Lda(addr));
+
+        assert_eq!(cpu.state.a, expected);
+    }
+
+    #[rstest]
+    fn shld_should_store_hl_pair(mut cpu: Cpu) {
+        let hl = 0xd1f2;
+        let addr = 0x2031;
+        cpu.set_hl(hl);
+
+        cpu.exec(Shld(addr));
+
+        assert_eq!(hl, cpu.bus.read_word(addr));
+    }
+
+    #[rstest]
+    fn lhld_should_load_hl_pair(mut cpu: Cpu) {
+        let hl = 0xd1f2;
+        let addr = 0x2031;
+        cpu.bus.write_word(addr, hl);
+
+        cpu.exec(Lhld(addr));
+
+        assert_eq!(cpu.hl(), hl);
+    }
 
     #[rstest_parametrize(
     instruction, start, expected,
