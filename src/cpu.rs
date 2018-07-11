@@ -879,8 +879,20 @@ impl Cpu {
     }
 }
 
+/// Jump Instructions
+impl Cpu {
+    fn pchl(&mut self) {
+        self.state.pc = self.hl();
+    }
+
+    fn jump(&mut self, address: Address) {
+        self.state.pc = address.into();
+    }
+}
+
 impl Cpu {
     pub fn exec(&mut self, instruction: Instruction) {
+        self.state.pc.overflow_add(instruction.length());
         match instruction {
             Cmc => {
                 self.cmc()
@@ -1011,9 +1023,14 @@ impl Cpu {
             Lhld(address) => {
                 self.lhld(address)
             }
+            Pchl => {
+                self.pchl()
+            }
+            Jump(address) => {
+                self.jump(address)
+            }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
-        self.state.pc.overflow_add(instruction.length());
     }
 }
 
@@ -2262,6 +2279,25 @@ mod test {
         assert_eq!(cpu.hl(), hl);
     }
 
+    #[rstest]
+    fn pchl_should_load_pc(mut cpu: Cpu) {
+        let addr = 0xad12;
+        cpu.set_hl(addr);
+
+        cpu.exec(Pchl);
+
+        assert_eq!(cpu.state.pc, addr);
+    }
+
+    #[rstest]
+    fn jump_should_load_pc(mut cpu: Cpu) {
+        let addr = 0xad12;
+
+        cpu.exec(Jump(addr));
+
+        assert_eq!(cpu.state.pc, addr);
+    }
+
     #[rstest_parametrize(
     instruction, start, expected,
     case(Unwrap("Lxi(RegPairValue::BC(0xae,0x02))")),
@@ -2342,8 +2378,6 @@ mod test {
 
         //Become 0xdb Z=false sign=true parity=true
         cpu.exec(Daa);
-
-        println!("{:?}", cpu.state.a);
 
         assert_eq!(Zero.ask(&cpu), false);
         assert_eq!(Sign.ask(&cpu), true);
