@@ -1,7 +1,7 @@
 use ::std::mem::swap;
 use self::Flag::*;
 use super::{
-    Address, asm::{BytePair, Instruction, Instruction::*, Reg, RegPair, RegPairValue},
+    Address, asm::{BytePair, Instruction, Instruction::*, Reg, RegPair, RegPairValue, CondFlag},
     Byte,
 };
 
@@ -888,6 +888,44 @@ impl Cpu {
     fn jump(&mut self, address: Address) {
         self.state.pc = address.into();
     }
+
+    fn jump_conditionals(&mut self, address: Address, flag: Flag, should_be: bool) {
+        if self.state.flags.get(flag) == should_be {
+            self.jump(address);
+        }
+    }
+
+    fn jc(&mut self, address: Address) {
+        self.jump_conditionals(address, Carry, true);
+    }
+
+    fn jnc(&mut self, address: Address) {
+        self.jump_conditionals(address, Carry, false);
+    }
+
+    fn jz(&mut self, address: Address) {
+        self.jump_conditionals(address, Zero, true);
+    }
+
+    fn jnz(&mut self, address: Address) {
+        self.jump_conditionals(address, Zero, false);
+    }
+
+    fn jm(&mut self, address: Address) {
+        self.jump_conditionals(address, Sign, true);
+    }
+
+    fn jp(&mut self, address: Address) {
+        self.jump_conditionals(address, Sign, false);
+    }
+
+    fn jpe(&mut self, address: Address) {
+        self.jump_conditionals(address, Parity, true);
+    }
+
+    fn jpo(&mut self, address: Address) {
+        self.jump_conditionals(address, Parity, false);
+    }
 }
 
 impl Cpu {
@@ -1028,6 +1066,30 @@ impl Cpu {
             }
             Jump(address) => {
                 self.jump(address)
+            }
+            J(CondFlag::C, address) => {
+                self.jc(address)
+            }
+            J(CondFlag::NC, address) => {
+                self.jnc(address)
+            }
+            J(CondFlag::Z, address) => {
+                self.jz(address)
+            }
+            J(CondFlag::NZ, address) => {
+                self.jnz(address)
+            }
+            J(CondFlag::M, address) => {
+                self.jm(address)
+            }
+            J(CondFlag::P, address) => {
+                self.jp(address)
+            }
+            J(CondFlag::PE, address) => {
+                self.jpe(address)
+            }
+            J(CondFlag::PO, address) => {
+                self.jpo(address)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -2296,6 +2358,38 @@ mod test {
         cpu.exec(Jump(addr));
 
         assert_eq!(cpu.state.pc, addr);
+    }
+
+    #[rstest_parametrize(
+    start, init, cmd, expected,
+    case(0x3202, Carry, Unwrap("J(CondFlag::C, 0xa030)"), 0xa030),
+    case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::C, 0xa030)"), 0x3205),
+    case(0x3202, Carry, Unwrap("J(CondFlag::NC, 0xa030)"), 0x3205),
+    case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::NC, 0xa030)"), 0xa030),
+    case(0x3202, Zero, Unwrap("J(CondFlag::Z, 0xa030)"), 0xa030),
+    case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::Z, 0xa030)"), 0x3205),
+    case(0x3202, Zero, Unwrap("J(CondFlag::NZ, 0xa030)"), 0x3205),
+    case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::NZ, 0xa030)"), 0xa030),
+    case(0x3202, Sign, Unwrap("J(CondFlag::M, 0xa030)"), 0xa030),
+    case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::M, 0xa030)"), 0x3205),
+    case(0x3202, Sign, Unwrap("J(CondFlag::P, 0xa030)"), 0x3205),
+    case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::P, 0xa030)"), 0xa030),
+    case(0x3202, Parity, Unwrap("J(CondFlag::PE, 0xa030)"), 0xa030),
+    case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::PE, 0xa030)"), 0x3205),
+    case(0x3202, Parity, Unwrap("J(CondFlag::PO, 0xa030)"), 0x3205),
+    case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::PO, 0xa030)"), 0xa030),
+    )]
+    fn jump_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
+                            cmd: Instruction, expected: Address)
+    where
+        A: ApplyState
+    {
+        cpu.state.set_pc(start);
+        init.apply(&mut cpu);
+
+        cpu.exec(cmd);
+
+        assert_eq!(cpu.state.pc, expected)
     }
 
     #[rstest_parametrize(
