@@ -473,6 +473,11 @@ impl Cpu {
         self.bus.write_byte(self.state.sp.into(), val);
     }
 
+    fn push_addr(&mut self, address: Address) {
+        self.push_val((address & 0xff) as Byte);
+        self.push_val(((address >> 8) & 0xff) as Byte);
+    }
+
     fn push_reg(&mut self, r: Reg) {
         let val = self.reg(r).val;
         self.push_val(val);
@@ -487,6 +492,11 @@ impl Cpu {
         let val = self.bus.read_byte(self.state.sp.into());
         self.state.sp.overflow_add(1);
         val
+    }
+
+    fn pop_addr(&mut self) -> Address {
+        let (hi, lo) = (self.pop_val(), self.pop_val());
+        (hi as Address) << 8 | (lo as Address)
     }
 
     fn pop_reg(&mut self, r: Reg) {
@@ -895,36 +905,16 @@ impl Cpu {
         }
     }
 
-    fn jc(&mut self, address: Address) {
-        self.jump_conditionals(address, Carry, true);
+    fn call(&mut self, address: Address) {
+        let addr = self.state.pc.into();
+        self.push_addr(addr);
+        self.jump(address);
     }
 
-    fn jnc(&mut self, address: Address) {
-        self.jump_conditionals(address, Carry, false);
-    }
-
-    fn jz(&mut self, address: Address) {
-        self.jump_conditionals(address, Zero, true);
-    }
-
-    fn jnz(&mut self, address: Address) {
-        self.jump_conditionals(address, Zero, false);
-    }
-
-    fn jm(&mut self, address: Address) {
-        self.jump_conditionals(address, Sign, true);
-    }
-
-    fn jp(&mut self, address: Address) {
-        self.jump_conditionals(address, Sign, false);
-    }
-
-    fn jpe(&mut self, address: Address) {
-        self.jump_conditionals(address, Parity, true);
-    }
-
-    fn jpo(&mut self, address: Address) {
-        self.jump_conditionals(address, Parity, false);
+    fn call_conditionals(&mut self, address: Address, flag: Flag, should_be: bool) {
+        if self.state.flags.get(flag) == should_be {
+            self.call(address);
+        }
     }
 }
 
@@ -1067,31 +1057,34 @@ impl Cpu {
             Jump(address) => {
                 self.jump(address)
             }
-            J(CondFlag::C, address) => {
-                self.jc(address)
+            J(cf, address) => {
+                let (flag, expected) = cf.into();
+                self.jump_conditionals(address, flag, expected)
             }
-            J(CondFlag::NC, address) => {
-                self.jnc(address)
+            Call(address) => {
+                self.call(address)
             }
-            J(CondFlag::Z, address) => {
-                self.jz(address)
-            }
-            J(CondFlag::NZ, address) => {
-                self.jnz(address)
-            }
-            J(CondFlag::M, address) => {
-                self.jm(address)
-            }
-            J(CondFlag::P, address) => {
-                self.jp(address)
-            }
-            J(CondFlag::PE, address) => {
-                self.jpe(address)
-            }
-            J(CondFlag::PO, address) => {
-                self.jpo(address)
+            C(cf, address) => {
+                let (flag, expected) = cf.into();
+                self.call_conditionals(address, flag, expected)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
+        }
+    }
+}
+
+impl Into<(Flag, bool)> for CondFlag {
+    fn into(self) -> (Flag, bool) {
+        use self::CondFlag::*;
+        match self {
+            C => (Carry, true),
+            NC => (Carry, false),
+            Z => (Zero, true),
+            NZ => (Zero, false),
+            M => (Sign, true),
+            P => (Sign, false),
+            PE => (Parity, true),
+            PO => (Parity, false),
         }
     }
 }
@@ -2383,6 +2376,52 @@ mod test {
                             cmd: Instruction, expected: Address)
     where
         A: ApplyState
+    {
+        cpu.state.set_pc(start);
+        init.apply(&mut cpu);
+
+        cpu.exec(cmd);
+
+        assert_eq!(cpu.state.pc, expected)
+    }
+
+    #[rstest]
+    fn call_should_change_pc_and_push_return_address_on_stack(mut cpu: Cpu) {
+        let start = 0x4212;
+        let addr = 0xad12;
+        let cmd = Call(addr);
+
+        cpu.state.set_pc(start);
+
+        cpu.exec(Call(addr));
+
+        assert_eq!(cpu.state.pc, addr);
+        assert_eq!(cpu.pop_addr(), start + cmd.length());
+    }
+
+    #[rstest_parametrize(
+    start, init, cmd, expected,
+    case(0x3202, Carry, Unwrap("C(CondFlag::C, 0xa030)"), 0xa030),
+    case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::C, 0xa030)"), 0x3205),
+    case(0x3202, Carry, Unwrap("C(CondFlag::NC, 0xa030)"), 0x3205),
+    case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::NC, 0xa030)"), 0xa030),
+    case(0x3202, Zero, Unwrap("C(CondFlag::Z, 0xa030)"), 0xa030),
+    case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::Z, 0xa030)"), 0x3205),
+    case(0x3202, Zero, Unwrap("C(CondFlag::NZ, 0xa030)"), 0x3205),
+    case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::NZ, 0xa030)"), 0xa030),
+    case(0x3202, Sign, Unwrap("C(CondFlag::M, 0xa030)"), 0xa030),
+    case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::M, 0xa030)"), 0x3205),
+    case(0x3202, Sign, Unwrap("C(CondFlag::P, 0xa030)"), 0x3205),
+    case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::P, 0xa030)"), 0xa030),
+    case(0x3202, Parity, Unwrap("C(CondFlag::PE, 0xa030)"), 0xa030),
+    case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::PE, 0xa030)"), 0x3205),
+    case(0x3202, Parity, Unwrap("C(CondFlag::PO, 0xa030)"), 0x3205),
+    case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::PO, 0xa030)"), 0xa030),
+    )]
+    fn call_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
+                            cmd: Instruction, expected: Address)
+        where
+            A: ApplyState
     {
         cpu.state.set_pc(start);
         init.apply(&mut cpu);
