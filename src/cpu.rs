@@ -916,6 +916,17 @@ impl Cpu {
             self.call(address);
         }
     }
+
+    fn ret(&mut self) {
+        let addr = self.pop_addr();
+        self.jump(addr);
+    }
+
+    fn ret_conditionals(&mut self, flag: Flag, should_be: bool) {
+        if self.state.flags.get(flag) == should_be {
+            self.ret();
+        }
+    }
 }
 
 impl Cpu {
@@ -1067,6 +1078,13 @@ impl Cpu {
             C(cf, address) => {
                 let (flag, expected) = cf.into();
                 self.call_conditionals(address, flag, expected)
+            }
+            Ret => {
+                self.ret()
+            }
+            R(cf) => {
+                let (flag, expected) = cf.into();
+                self.ret_conditionals(flag, expected)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -2429,6 +2447,77 @@ mod test {
         cpu.exec(cmd);
 
         assert_eq!(cpu.state.pc, expected)
+    }
+
+    #[rstest]
+    fn ret_should_pop_address_from_stack_and_then_jump_to_it(mut cpu: Cpu) {
+        let start = 0x4212;
+        let addr = 0xad12;
+        cpu.state.set_pc(start);
+        cpu.push_addr(addr);
+
+        cpu.exec(Ret);
+
+        assert_eq!(cpu.state.pc, addr);
+    }
+
+    #[rstest]
+    fn ret_should_walk_the_stack(mut cpu: Cpu) {
+        let addr = vec![0xad12, 0xe210, 0x0020];
+        cpu.push_addr(addr[0]);
+        cpu.push_addr(addr[1]);
+        cpu.push_addr(addr[2]);
+
+        cpu.exec(Ret);
+        assert_eq!(cpu.state.pc, addr[2]);
+
+        cpu.exec(Ret);
+        assert_eq!(cpu.state.pc, addr[1]);
+
+        cpu.exec(Ret);
+        assert_eq!(cpu.state.pc, addr[0]);
+    }
+
+    #[rstest_parametrize(
+    start, addr, init, cmd, expected,
+    case(0x3202, 0xa030, Carry, Unwrap("R(CondFlag::C)"), 0xa030),
+    case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::C)"), 0x3203),
+    case(0x3202, 0xa030, Carry, Unwrap("R(CondFlag::NC)"), 0x3203),
+    case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::NC)"), 0xa030),
+    case(0x3202, 0xa030, Zero, Unwrap("R(CondFlag::Z)"), 0xa030),
+    case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::Z)"), 0x3203),
+    case(0x3202, 0xa030, Zero, Unwrap("R(CondFlag::NZ)"), 0x3203),
+    case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::NZ)"), 0xa030),
+    case(0x3202, 0xa030, Sign, Unwrap("R(CondFlag::M)"), 0xa030),
+    case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::M)"), 0x3203),
+    case(0x3202, 0xa030, Sign, Unwrap("R(CondFlag::P)"), 0x3203),
+    case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::P)"), 0xa030),
+    case(0x3202, 0xa030, Parity, Unwrap("R(CondFlag::PE)"), 0xa030),
+    case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::PE)"), 0x3203),
+    case(0x3202, 0xa030, Parity, Unwrap("R(CondFlag::PO)"), 0x3203),
+    case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::PO)"), 0xa030),
+    )]
+    fn return_conditionals<A>(mut cpu: Cpu, start: Address, addr: Address, init: A,
+                              cmd: Instruction, expected: Address)
+        where
+            A: ApplyState
+    {
+        cpu.state.set_pc(start);
+        cpu.push_addr(addr);
+        init.apply(&mut cpu);
+
+        cpu.exec(cmd);
+
+        assert_eq!(cpu.state.pc, expected)
+    }
+
+    #[rstest]
+    fn return_conditional_should_not_pop_address_if_condition_dont_meet(mut cpu: Cpu) {
+        cpu.push_addr(0x4320);
+
+        cpu.exec(R(CondFlag::C));
+
+        assert_eq!(cpu.pop_addr(), 0x4320)
     }
 
     #[rstest_parametrize(
