@@ -364,6 +364,8 @@ impl MemoryBus {
 pub struct Cpu {
     state: State,
 
+    interrupt_enabled: bool,
+
     bus: MemoryBus,
 }
 
@@ -949,6 +951,17 @@ impl Cpu {
     }
 }
 
+/// Interrupts
+impl Cpu {
+    fn ei(&mut self) {
+        self.interrupt_enabled = true;
+    }
+
+    fn di(&mut self) {
+        self.interrupt_enabled = false;
+    }
+}
+
 impl Cpu {
     pub fn exec(&mut self, instruction: Instruction) {
         self.state.pc.overflow_add(instruction.length());
@@ -1108,6 +1121,12 @@ impl Cpu {
             }
             Rst(irq) => {
                 self.rst(irq)
+            }
+            Ei => {
+                self.ei()
+            }
+            Di => {
+                self.di()
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -2554,6 +2573,24 @@ mod test {
 
         assert_eq!(cpu.state.pc.val, 0x18);
         assert_eq!(cpu.pop_addr(), start + cmd.length());
+    }
+
+    #[rstest]
+    fn enable_interrupt(mut cpu: Cpu) {
+        cpu.interrupt_enabled = false;
+
+        cpu.exec(Ei);
+
+        assert_eq!(cpu.interrupt_enabled, true);
+    }
+
+    #[rstest]
+    fn disable_interrupt(mut cpu: Cpu) {
+        cpu.interrupt_enabled = true;
+
+        cpu.exec(Di);
+
+        assert_eq!(cpu.interrupt_enabled, false);
     }
 
     #[rstest_parametrize(
