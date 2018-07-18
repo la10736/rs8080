@@ -1,7 +1,8 @@
 use ::std::mem::swap;
 use self::Flag::*;
 use super::{
-    Address, asm::{BytePair, Instruction, Instruction::*, Reg, RegPair, RegPairValue, CondFlag},
+    Address, asm::{BytePair, Instruction, Instruction::*,
+                   Reg, RegPair, RegPairValue, CondFlag, IrqAddr},
     Byte,
 };
 
@@ -149,6 +150,21 @@ impl From<(RegByte, RegByte)> for RegAddress {
 impl Into<Address> for RegAddress {
     fn into(self) -> Address {
         self.val
+    }
+}
+
+impl Into<Address> for IrqAddr {
+    fn into(self) -> Address {
+        (match self {
+            IrqAddr::I0 => 0x0,
+            IrqAddr::I1 => 0x1,
+            IrqAddr::I2 => 0x2,
+            IrqAddr::I3 => 0x3,
+            IrqAddr::I4 => 0x4,
+            IrqAddr::I5 => 0x5,
+            IrqAddr::I6 => 0x6,
+            IrqAddr::I7 => 0x7,
+        } as Address) << 3
     }
 }
 
@@ -927,6 +943,10 @@ impl Cpu {
             self.ret();
         }
     }
+
+    fn rst(&mut self, irq: IrqAddr) {
+        self.call(irq.into())
+    }
 }
 
 impl Cpu {
@@ -1085,6 +1105,9 @@ impl Cpu {
             R(cf) => {
                 let (flag, expected) = cf.into();
                 self.ret_conditionals(flag, expected)
+            }
+            Rst(irq) => {
+                self.rst(irq)
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
@@ -2518,6 +2541,19 @@ mod test {
         cpu.exec(R(CondFlag::C));
 
         assert_eq!(cpu.pop_addr(), 0x4320)
+    }
+
+    #[rstest]
+    fn rst_should_push_pc_and_jump_to_isr(mut cpu: Cpu) {
+        let start = 0x3ad0;
+        let irq = IrqAddr::I3;
+        let cmd = Rst(irq);
+        cpu.state.set_pc(start);
+
+        cpu.exec(cmd);
+
+        assert_eq!(cpu.state.pc.val, 0x18);
+        assert_eq!(cpu.pop_addr(), start + cmd.length());
     }
 
     #[rstest_parametrize(
