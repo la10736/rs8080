@@ -373,7 +373,36 @@ impl Default for CpuState {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone, Copy, PartialEq)]
+pub enum IrqCmd {
+    Irq0,
+    Irq1,
+    Irq2,
+    Irq3,
+    Irq4,
+    Irq5,
+    Irq6,
+    Irq7,
+    RawCmd(Instruction)
+}
+
+impl Into<Instruction> for IrqCmd {
+    fn into(self) -> Instruction {
+        match self {
+            IrqCmd::Irq0 => Rst(IrqAddr::I0),
+            IrqCmd::Irq1 => Rst(IrqAddr::I1),
+            IrqCmd::Irq2 => Rst(IrqAddr::I2),
+            IrqCmd::Irq3 => Rst(IrqAddr::I3),
+            IrqCmd::Irq4 => Rst(IrqAddr::I4),
+            IrqCmd::Irq5 => Rst(IrqAddr::I5),
+            IrqCmd::Irq6 => Rst(IrqAddr::I6),
+            IrqCmd::Irq7 => Rst(IrqAddr::I7),
+            IrqCmd::RawCmd(instruction) => instruction,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Cpu<O: OutputBus, I: InputBus> {
     state: State,
     run_state: CpuState,
@@ -386,6 +415,18 @@ pub struct Cpu<O: OutputBus, I: InputBus> {
     input: I,
 }
 
+impl<O: OutputBus + Default, I: InputBus + Default> Default for Cpu<O, I> {
+    fn default() -> Self {
+        Cpu {interrupt_enabled: true,
+            bus: Default::default(),
+            output: Default::default(),
+            state: Default::default(),
+            run_state: Default::default(),
+            input: Default::default(),
+        }
+    }
+}
+
 /// External interface
 impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     pub fn exec(&mut self, instruction: Instruction) {
@@ -393,6 +434,10 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
             return;
         }
         self.state.pc.overflow_add(instruction.length());
+        self.apply(instruction)
+    }
+
+    pub fn apply(&mut self, instruction: Instruction) -> () {
         match instruction {
             Cmc => {
                 self.cmc()
@@ -567,6 +612,12 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
             }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
+    }
+
+    pub fn irq(&mut self, cmd: IrqCmd) {
+        self.interrupt_enabled = false;
+        self.run_state = CpuState::Running;
+        self.apply(cmd.into());
     }
 
     pub fn is_running(&self) -> bool {
@@ -2845,5 +2896,51 @@ mod test {
         cpu.exec(Pop(BytePair::DE));
 
         assert_eq!(state, cpu.state);
+    }
+
+    #[rstest]
+    fn irq_instruction_should_not_advance_pc(mut cpu: Cpu) {
+        let address = 0x3200;
+        cpu.state.set_pc(address);
+
+        cpu.irq(IrqCmd::RawCmd(Nop));
+
+        assert_eq!(cpu.state.pc, address);
+    }
+
+    #[rstest]
+    fn irq_instruction_should_disable_irq(mut cpu: Cpu) {
+        assert!(cpu.interrupt_enabled);
+
+        cpu.irq(IrqCmd::Irq3);
+
+        assert!(!cpu.interrupt_enabled);
+    }
+
+    #[rstest]
+    fn irq_instruction_should_wake_up_cpu(mut cpu: Cpu) {
+        cpu.run_state = CpuState::Stopped;
+
+        cpu.irq(IrqCmd::Irq3);
+
+        assert!(cpu.is_running());
+    }
+
+    #[rstest]
+    fn irq_instruction_should_execute_given_instruction(mut cpu: Cpu) {
+        cpu.state.set_pc(0x1234);
+
+        cpu.irq(IrqCmd::Irq3);
+
+        assert_eq!(cpu.state.pc, 0x0018);
+    }
+
+    #[rstest]
+    fn irq_instruction_raw_execution(mut cpu: Cpu) {
+        cpu.state.set_pc(0x1234);
+
+        cpu.irq(IrqCmd::RawCmd(Ei));
+
+        assert!(cpu.interrupt_enabled);
     }
 }
