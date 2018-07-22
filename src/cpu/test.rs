@@ -914,16 +914,15 @@ mod accumulator {
     }
 
     #[rstest_parametrize(
-    start, r, v, expected,
-    case(0x81, Unwrap("Reg::D"), 0x7e, 0x00),
-    case(0xa6, Unwrap("Reg::E"), 0xa2, 0xa2),
-    case(0x5a, Unwrap("Reg::M"), 0xff, 0x5a),
+    start, other, expected,
+    case(0x81, 0x7e, 0x00),
+    case(0xa6, 0xa2, 0xa2),
+    case(0x5a, 0xff, 0x5a),
     )]
-    fn ana_should_perform_logical_and(mut cpu: Cpu, start: Byte, r: Reg, v: Byte, expected: Byte) {
+    fn ana_should_perform_logical_and(mut cpu: Cpu, start: Byte, other: Byte, expected: Byte) {
         cpu.state.set_a(start);
-        RegValue::from((r, v)).apply(&mut cpu);
 
-        cpu.exec(Ana(r));
+        cpu.accumulator_and(other);
 
         assert_eq!(cpu.state.a, expected);
     }
@@ -962,6 +961,7 @@ mod accumulator {
     start, init, cmd, expected,
     case(0xa6, Unwrap("RegValue::L(0xa2)"), Unwrap("Xra(Reg::L)"), 0x04),
     case(0x81, Unwrap("RegValue::H(0x7e)"), Unwrap("Ora(Reg::H)"), 0xff),
+    case(0xae, Unwrap("()"), Unwrap("Ani(0x9b)"), 0x8a),
     case(0xa6, Unwrap("()"), Unwrap("Xri(0xa2)"), 0x04),
     case(0x81, Unwrap("()"), Unwrap("Ori(0x7e)"), 0xff),
     )]

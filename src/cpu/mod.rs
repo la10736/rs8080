@@ -318,9 +318,11 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
             Stax(rp) if rp.is_basic() => {
                 self.stax(rp)
             }
+            Stax(_) => unimplemented!("Instruction {:?} should not exist!", instruction),
             Ldax(rp) if rp.is_basic() => {
                 self.ldax(rp)
             }
+            Ldax(_) => unimplemented!("Instruction {:?} should not exist!", instruction),
             Add(r) => {
                 self.add(r)
             }
@@ -398,6 +400,9 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
             }
             Sbi(val) => {
                 self.sbi(val)
+            }
+            Ani(val) => {
+                self.ani(val)
             }
             Xri(val) => {
                 self.xri(val)
@@ -828,9 +833,8 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     }
 
     fn ana(&mut self, r: Reg) {
-        self.state.a = (self.state.a.val & self.reg(r).val).into();
-        self.fix_static_flags(Reg::A);
-        self.carry_clear();
+        let other = self.reg(r).val;
+        self.accumulator_and(other);
     }
 
     fn xra(&mut self, r: Reg) {
@@ -843,12 +847,22 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
         self.accumulator_or(other);
     }
 
+    fn ani(&mut self, other: Byte) {
+        self.accumulator_and(other);
+    }
+
     fn xri(&mut self, other: Byte) {
         self.accumulator_xor(other);
     }
 
     fn ori(&mut self, other: Byte) {
         self.accumulator_or(other);
+    }
+
+    fn accumulator_and(&mut self, other: u8) {
+        self.state.a = (self.state.a.val & other).into();
+        self.fix_static_flags(Reg::A);
+        self.carry_clear();
     }
 
     fn accumulator_or(&mut self, other: u8) {
