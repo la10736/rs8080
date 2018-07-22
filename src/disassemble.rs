@@ -5,7 +5,6 @@ use super::{
         Instruction,
         Reg,
         RegPair,
-        IrqAddr,
     },
 };
 
@@ -69,7 +68,6 @@ impl<I: Iterator<Item=u8>> CodeIterator<I> {
             v if (v & 0xc7) == 0xc4 => C((v & 0x38).into(), self.u16_data()?),
             v if (v & 0xcf) == 0xc5 => Push((v & 0x30).into()),
             0xc6 => Adi(self.u8_data()?),
-            0xc7 => Rst(IrqAddr::I0),
             v if (v & 0xc7) == 0xc7 => Rst((v & 0x38).into()),
             0xc9 => Ret,
             0xcd => Call(self.u16_data()?),
