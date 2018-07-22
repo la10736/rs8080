@@ -361,9 +361,22 @@ impl MemoryBus {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum CpuState {
+    Running,
+    Stopped,
+}
+
+impl Default for CpuState {
+    fn default() -> Self {
+        CpuState::Running
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct Cpu<O: OutputBus, I: InputBus> {
     state: State,
+    run_state: CpuState,
 
     interrupt_enabled: bool,
 
@@ -373,8 +386,201 @@ pub struct Cpu<O: OutputBus, I: InputBus> {
     input: I,
 }
 
+/// External interface
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+    pub fn exec(&mut self, instruction: Instruction) {
+        if !self.is_running() {
+            return;
+        }
+        self.state.pc.overflow_add(instruction.length());
+        match instruction {
+            Cmc => {
+                self.cmc()
+            }
+            Stc => {
+                self.stc()
+            }
+            Inr(r) => {
+                self.inr(r)
+            }
+            Dcr(r) => {
+                self.dcr(r)
+            }
+            Cma => {
+                self.cma()
+            }
+            Daa => {
+                self.daa()
+            }
+            Nop => {
+                self.nop()
+            }
+            Mov(f, t) => {
+                self.mov(f, t)
+            }
+            Stax(rp) if rp.is_basic() => {
+                self.stax(rp)
+            }
+            Ldax(rp) if rp.is_basic() => {
+                self.ldax(rp)
+            }
+            Add(r) => {
+                self.add(r)
+            }
+            Adc(r) => {
+                self.adc(r)
+            }
+            Sub(r) => {
+                self.sub(r)
+            }
+            Sbb(r) => {
+                self.sbb(r)
+            }
+            Ana(r) => {
+                self.ana(r)
+            }
+            Xra(r) => {
+                self.xra(r)
+            }
+            Ora(r) => {
+                self.ora(r)
+            }
+            Cmp(r) => {
+                self.cmp(r)
+            }
+            Rlc => {
+                self.rlc()
+            }
+            Rrc => {
+                self.rrc()
+            }
+            Ral => {
+                self.ral()
+            }
+            Rar => {
+                self.rar()
+            }
+            Push(bp) => {
+                self.push(bp)
+            }
+            Pop(bp) => {
+                self.pop(bp)
+            }
+            Dad(rp) => {
+                self.dad(rp)
+            }
+            Inx(rp) => {
+                self.inx(rp)
+            }
+            Dcx(rp) => {
+                self.dcx(rp)
+            }
+            Xchg => {
+                self.xchg()
+            }
+            Xthl => {
+                self.xthl()
+            }
+            Sphl => {
+                self.sphl()
+            }
+            Lxi(rp) => {
+                self.lxi(rp)
+            }
+            Mvi(r, val) => {
+                self.mvi(r, val)
+            }
+            Adi(val) => {
+                self.adi(val)
+            }
+            Aci(val) => {
+                self.aci(val)
+            }
+            Sui(val) => {
+                self.sui(val)
+            }
+            Sbi(val) => {
+                self.sbi(val)
+            }
+            Xri(val) => {
+                self.xri(val)
+            }
+            Ori(val) => {
+                self.ori(val)
+            }
+            Cpi(val) => {
+                self.cpi(val)
+            }
+            Sta(address) => {
+                self.sta(address)
+            }
+            Lda(address) => {
+                self.lda(address)
+            }
+            Shld(address) => {
+                self.shld(address)
+            }
+            Lhld(address) => {
+                self.lhld(address)
+            }
+            Pchl => {
+                self.pchl()
+            }
+            Jump(address) => {
+                self.jump(address)
+            }
+            J(cf, address) => {
+                let (flag, expected) = cf.into();
+                self.jump_conditionals(address, flag, expected)
+            }
+            Call(address) => {
+                self.call(address)
+            }
+            C(cf, address) => {
+                let (flag, expected) = cf.into();
+                self.call_conditionals(address, flag, expected)
+            }
+            Ret => {
+                self.ret()
+            }
+            R(cf) => {
+                let (flag, expected) = cf.into();
+                self.ret_conditionals(flag, expected)
+            }
+            Rst(irq) => {
+                self.rst(irq)
+            }
+            Ei => {
+                self.ei()
+            }
+            Di => {
+                self.di()
+            }
+            In(id) => {
+                self.input(id)
+            }
+            Out(id) => {
+                self.output(id)
+            }
+            Hlt => {
+                self.halt()
+            }
+            _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.run_state == CpuState::Running
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        self.run_state == CpuState::Stopped
+    }
+}
+
 /// Utilities
 impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+
     fn reg(&self, r: self::Reg) -> RegByte {
         use self::Reg::*;
         match r {
@@ -978,180 +1184,10 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     }
 }
 
+/// Halt
 impl<O: OutputBus, I: InputBus> Cpu<O, I> {
-    pub fn exec(&mut self, instruction: Instruction) {
-        self.state.pc.overflow_add(instruction.length());
-        match instruction {
-            Cmc => {
-                self.cmc()
-            }
-            Stc => {
-                self.stc()
-            }
-            Inr(r) => {
-                self.inr(r)
-            }
-            Dcr(r) => {
-                self.dcr(r)
-            }
-            Cma => {
-                self.cma()
-            }
-            Daa => {
-                self.daa()
-            }
-            Nop => {
-                self.nop()
-            }
-            Mov(f, t) => {
-                self.mov(f, t)
-            }
-            Stax(rp) if rp.is_basic() => {
-                self.stax(rp)
-            }
-            Ldax(rp) if rp.is_basic() => {
-                self.ldax(rp)
-            }
-            Add(r) => {
-                self.add(r)
-            }
-            Adc(r) => {
-                self.adc(r)
-            }
-            Sub(r) => {
-                self.sub(r)
-            }
-            Sbb(r) => {
-                self.sbb(r)
-            }
-            Ana(r) => {
-                self.ana(r)
-            }
-            Xra(r) => {
-                self.xra(r)
-            }
-            Ora(r) => {
-                self.ora(r)
-            }
-            Cmp(r) => {
-                self.cmp(r)
-            }
-            Rlc => {
-                self.rlc()
-            }
-            Rrc => {
-                self.rrc()
-            }
-            Ral => {
-                self.ral()
-            }
-            Rar => {
-                self.rar()
-            }
-            Push(bp) => {
-                self.push(bp)
-            }
-            Pop(bp) => {
-                self.pop(bp)
-            }
-            Dad(rp) => {
-                self.dad(rp)
-            }
-            Inx(rp) => {
-                self.inx(rp)
-            }
-            Dcx(rp) => {
-                self.dcx(rp)
-            }
-            Xchg => {
-                self.xchg()
-            }
-            Xthl => {
-                self.xthl()
-            }
-            Sphl => {
-                self.sphl()
-            }
-            Lxi(rp) => {
-                self.lxi(rp)
-            }
-            Mvi(r, val) => {
-                self.mvi(r, val)
-            }
-            Adi(val) => {
-                self.adi(val)
-            }
-            Aci(val) => {
-                self.aci(val)
-            }
-            Sui(val) => {
-                self.sui(val)
-            }
-            Sbi(val) => {
-                self.sbi(val)
-            }
-            Xri(val) => {
-                self.xri(val)
-            }
-            Ori(val) => {
-                self.ori(val)
-            }
-            Cpi(val) => {
-                self.cpi(val)
-            }
-            Sta(address) => {
-                self.sta(address)
-            }
-            Lda(address) => {
-                self.lda(address)
-            }
-            Shld(address) => {
-                self.shld(address)
-            }
-            Lhld(address) => {
-                self.lhld(address)
-            }
-            Pchl => {
-                self.pchl()
-            }
-            Jump(address) => {
-                self.jump(address)
-            }
-            J(cf, address) => {
-                let (flag, expected) = cf.into();
-                self.jump_conditionals(address, flag, expected)
-            }
-            Call(address) => {
-                self.call(address)
-            }
-            C(cf, address) => {
-                let (flag, expected) = cf.into();
-                self.call_conditionals(address, flag, expected)
-            }
-            Ret => {
-                self.ret()
-            }
-            R(cf) => {
-                let (flag, expected) = cf.into();
-                self.ret_conditionals(flag, expected)
-            }
-            Rst(irq) => {
-                self.rst(irq)
-            }
-            Ei => {
-                self.ei()
-            }
-            Di => {
-                self.di()
-            }
-            In(id) => {
-                self.input(id)
-            }
-            Out(id) => {
-                self.output(id)
-            }
-            _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
-        }
+    fn halt(&mut self) {
+        self.run_state = CpuState::Stopped;
     }
 }
 
@@ -2778,5 +2814,36 @@ mod test {
         cpu.exec(In(device_id));
 
         assert_eq!(cpu.state.a, val)
+    }
+
+    #[rstest]
+    fn halt_should_advance_pc(mut cpu: Cpu) {
+        cpu.state.set_pc(0x3200);
+
+        cpu.exec(Hlt);
+
+        assert_eq!(cpu.state.pc, 0x3201);
+    }
+
+    #[rstest]
+    fn halt_should_enter_instopped_state(mut cpu: Cpu) {
+        cpu.exec(Hlt);
+
+        assert!(cpu.is_stopped());
+    }
+
+    #[rstest]
+    fn cpu_in_stopped_state_should_ignore_commands(mut cpu: Cpu) {
+        let state = cpu.state.clone();
+
+        cpu.run_state = CpuState::Stopped;
+        assert!(cpu.is_stopped());
+
+        cpu.exec(Mov(Reg::B, Reg::H));
+        cpu.exec(Jump(0x3214));
+        cpu.exec(Add(Reg::C));
+        cpu.exec(Pop(BytePair::DE));
+
+        assert_eq!(state, cpu.state);
     }
 }
