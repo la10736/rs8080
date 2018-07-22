@@ -5,6 +5,7 @@ use super::{
                    Reg, RegPair, RegPairValue, CondFlag, IrqAddr},
     Byte,
 };
+use std::ops::Deref;
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 struct RegByte {
@@ -360,17 +361,45 @@ impl MemoryBus {
     }
 }
 
+pub trait OutputBus {
+    fn send(&self, id: Byte, data: Byte);
+}
+
+pub trait InputBus {
+    fn read(&self, id: Byte) -> Byte;
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct VoidIOBus;
+impl OutputBus for VoidIOBus { fn send(&self, _id: u8, _data: u8) { } }
+impl InputBus for VoidIOBus { fn read(&self, _id: u8) -> u8 { 0x00 } }
+
+impl<T: InputBus, O: Deref<Target=T>> InputBus for O {
+    fn read(&self, id: Byte) -> Byte {
+        self.deref().read(id)
+    }
+}
+
+impl<T: OutputBus, O: Deref<Target=T>> OutputBus for O {
+    fn send(&self, id: Byte, data: Byte) {
+        self.deref().send(id, data)
+    }
+}
+
 #[derive(Default, Clone)]
-pub struct Cpu {
+pub struct Cpu<O: OutputBus, I: InputBus> {
     state: State,
 
     interrupt_enabled: bool,
 
     bus: MemoryBus,
+
+    output: O,
+    input: I,
 }
 
 /// Utilities
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn reg(&self, r: self::Reg) -> RegByte {
         use self::Reg::*;
         match r {
@@ -529,12 +558,12 @@ impl Cpu {
 }
 
 /// Carry bit Instructions
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn nop(&mut self) {}
 }
 
 /// Carry bit Instructions
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn cmc(&mut self) {
         self.state.flags.toggle(Flag::Carry);
     }
@@ -545,7 +574,7 @@ impl Cpu {
 
 
 /// Immediate Instructions
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn lxi(&mut self, v: self::RegPairValue) {
         use self::RegPairValue::*;
         match v {
@@ -573,7 +602,7 @@ impl Cpu {
     }
 
     fn aci(&mut self, val: Byte) {
-        let other = if self.carry() {val + 1} else {val};
+        let other = if self.carry() { val + 1 } else { val };
         self.accumulator_add(other);
     }
 
@@ -582,7 +611,7 @@ impl Cpu {
     }
 
     fn sbi(&mut self, val: Byte) {
-        let other = if self.carry() {val + 1} else {val};
+        let other = if self.carry() { val + 1 } else { val };
         self.accumulator_sub(other);
     }
 
@@ -592,7 +621,7 @@ impl Cpu {
 }
 
 /// Single Register Instructions
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn cma(&mut self) {
         self.reg_apply(self::Reg::A, |r| r.one_complement());
     }
@@ -630,7 +659,7 @@ impl Cpu {
 }
 
 /// Data transfer Instruction
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn mov(&mut self, f: Reg, t: Reg) {
         let orig = self.reg(f);
         self.reg_apply(t, |dest| { *dest = orig; })
@@ -648,7 +677,7 @@ impl Cpu {
 }
 
 /// Carry and AuxCarry
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn carry(&self) -> bool {
         self.state.flag(Flag::Carry)
     }
@@ -675,7 +704,7 @@ impl Cpu {
 }
 
 /// Accumulator
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn accumulator_add(&mut self, other: u8) -> () {
         let auxcarry = (self.state.a.low() + (other & 0x0f)) > 0x0f;
         let carry = self.state.a.overflow_add(other);
@@ -771,7 +800,7 @@ const RIGHT_BIT: u8 = 0;
 const LEFT_BIT: u8 = 7;
 
 /// Rotate
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn rlc(&mut self) {
         let carry = self.state.a.rotate_left();
         self.set_carry_state(carry);
@@ -802,7 +831,7 @@ impl Cpu {
 }
 
 /// Register Pair Instructions
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn push(&mut self, bp: BytePair) {
         use self::BytePair::*;
         match bp {
@@ -885,7 +914,7 @@ impl Cpu {
 }
 
 /// Direct Addressing Instructions
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn sta(&mut self, address: Address) {
         let value = self.state.a.val;
         self.bus.write_byte(address, value);
@@ -908,7 +937,7 @@ impl Cpu {
 }
 
 /// Jump Instructions
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn pchl(&mut self) {
         self.state.pc = self.hl();
     }
@@ -952,7 +981,7 @@ impl Cpu {
 }
 
 /// Interrupts
-impl Cpu {
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     fn ei(&mut self) {
         self.interrupt_enabled = true;
     }
@@ -962,7 +991,19 @@ impl Cpu {
     }
 }
 
-impl Cpu {
+/// IO
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+    fn input(&mut self, id: Byte) {
+        let val = self.input.read(id);
+        self.state.set_a(val);
+    }
+
+    fn output(&mut self, id: Byte) {
+        self.output.send(id, self.state.a.val);
+    }
+}
+
+impl<O: OutputBus, I: InputBus> Cpu<O, I> {
     pub fn exec(&mut self, instruction: Instruction) {
         self.state.pc.overflow_add(instruction.length());
         match instruction {
@@ -1128,6 +1169,12 @@ impl Cpu {
             Di => {
                 self.di()
             }
+            In(id) => {
+                self.input(id)
+            }
+            Out(id) => {
+                self.output(id)
+            }
             _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
         }
     }
@@ -1151,90 +1198,27 @@ impl Into<(Flag, bool)> for CondFlag {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+    use super::Cpu as GenCpu;
     use rstest::rstest;
     use rstest::rstest_parametrize;
-    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
-    #[derive(Default)]
-    struct StateBuilder {
-        proto: State
-    }
-
-    impl StateBuilder {
-        fn create(&self) -> State {
-            self.proto.clone()
-        }
-
-        fn b(mut self, val: Byte) -> Self {
-            self.proto.set_b(val);
-            self
-        }
-
-        fn c(mut self, val: Byte) -> Self {
-            self.proto.set_c(val);
-            self
-        }
-
-        fn d(mut self, val: Byte) -> Self {
-            self.proto.set_d(val);
-            self
-        }
-
-        fn e(mut self, val: Byte) -> Self {
-            self.proto.set_e(val);
-            self
-        }
-
-        fn h(mut self, val: Byte) -> Self {
-            self.proto.set_h(val);
-            self
-        }
-
-        fn l(mut self, val: Byte) -> Self {
-            self.proto.set_l(val);
-            self
-        }
-
-        fn sp(mut self, addr: Address) -> Self {
-            self.proto.set_sp(addr);
-            self
-        }
-
-        fn pc(mut self, address: Address) -> Self {
-            self.proto.set_pc(address);
-            self
-        }
-    }
-
-    #[derive(Default)]
-    struct CpuBuilder {
-        proto: Cpu
-    }
-
-    impl CpuBuilder {
-        fn create(&self) -> Cpu {
-            self.proto.clone()
-        }
-
-        fn state(mut self, state: State) -> Self {
-            self.proto.state = state;
-            self
-        }
-    }
+    type Cpu = GenCpu<VoidIOBus, VoidIOBus>;
 
     fn cpu() -> Cpu {
-        CpuBuilder::default()
-            .state(StateBuilder::default()
-                .b(0x10)
-                .c(0xa6)
-                .d(0x20)
-                .e(0xe6)
-                .h(0x22)
-                .l(0xee)
-                .sp(0x1234)
-                .create()
-            )
-            .create()
+        let state = State {
+            b: 0x10.into(),
+            c: 0xa6.into(),
+            d: 0x20.into(),
+            e: 0xe6.into(),
+            h: 0x22.into(),
+            l: 0xee.into(),
+            sp: 0x1234.into(),
+            ..Default::default()
+        };
+        Cpu { state, ..Default::default() }
     }
 
     trait CpuQuery {
@@ -1948,8 +1932,8 @@ mod test {
         case(Unwrap("Dcr(Reg::M)"), Unwrap("RegValue::M(0xaf)"), 0xae),
         )]
         fn single_register_command<I>(mut cpu: Cpu, cmd: Instruction, init: I, after: Byte)
-        where
-            I: ApplyState + Into<Reg>
+            where
+                I: ApplyState + Into<Reg>
         {
             init.apply(&mut cpu);
 
@@ -2072,8 +2056,8 @@ mod test {
         case(0x12, Unwrap("Carry"), Unwrap("Aci(0xa0)"), 0xb3),
         )]
         fn additions_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
-        where
-            I: ApplyState,
+            where
+                I: ApplyState,
         {
             cpu.state.set_a(start);
             init.apply(&mut cpu);
@@ -2237,7 +2221,6 @@ mod test {
         case(Unwrap("Ora(Reg::B)"), 0xfe, 0x07),
         )]
         fn should_update_flags(mut cpu: Cpu, cmd: Instruction, a: Byte, b: Byte) {
-
             cpu.state.set_a(a);
             cpu.state.set_b(b);
             cpu.state.flags.set(Zero);
@@ -2434,8 +2417,8 @@ mod test {
     )]
     fn jump_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
                             cmd: Instruction, expected: Address)
-    where
-        A: ApplyState
+        where
+            A: ApplyState
     {
         cpu.state.set_pc(start);
         init.apply(&mut cpu);
@@ -2765,5 +2748,81 @@ mod test {
         state.pc.overflow_add(1);
 
         assert_eq!(state, cpu.state);
+    }
+
+    #[test]
+    fn input_should_read_from_bus_into_accumulator() {
+        #[derive(Default)]
+        struct Loop;
+
+        impl InputBus for Loop { fn read(&self, id: Byte) -> Byte { id } }
+
+        let mut cpu = GenCpu { input: Loop::default(), output: VoidIOBus::default(), ..Default::default() };
+        let input_val = 0x42;
+
+        cpu.exec(In(input_val));
+
+        assert_eq!(cpu.state.a, input_val)
+    }
+
+    #[test]
+    fn output_should_send_accumulator_to_output_bus() {
+        #[derive(Default)]
+        struct Out {id: RefCell<Option<Byte>>, data: RefCell<Option<Byte>>};
+        impl OutputBus for Out {
+            fn send(&self, id: Byte, data: Byte) {
+                self.id.replace(Some(id));
+                self.data.replace(Some(data));
+            }
+        }
+
+        let mut cpu = GenCpu { input: VoidIOBus::default(), output: Out::default(), ..Default::default() };
+        let out_val = 0x31;
+        let id = 0x12;
+
+        cpu.state.set_a(out_val);
+
+        cpu.exec(Out(id));
+
+        assert_eq!(cpu.output.id.borrow().unwrap(), id);
+        assert_eq!(cpu.output.data.borrow().unwrap(), out_val);
+    }
+
+    struct FakeBus {
+        data: RefCell<[Option<u8>; 256]>
+    }
+
+    impl Default for FakeBus {
+        fn default() -> Self {
+            FakeBus { data: RefCell::new([None; 256]) }
+        }
+    }
+
+    impl OutputBus for FakeBus {
+        fn send(&self, id: u8, data: u8) {
+            self.data.borrow_mut()[id as usize] = Some(data)
+        }
+    }
+
+    impl InputBus for FakeBus {
+        fn read(&self, id: u8) -> u8 {
+            self.data.borrow()[id as usize].unwrap()
+        }
+    }
+
+    #[test]
+    fn test_input_output_loop() {
+        let io_loop: Rc<FakeBus> = Rc::default();
+        let mut cpu = GenCpu { input: io_loop.clone(), output: io_loop.clone(), ..Default::default() };
+        let val = 0x31;
+        let device_id = 0x12;
+
+        cpu.state.set_a(val);
+        cpu.exec(Out(device_id));
+
+        cpu.state.set_a(0x00);
+        cpu.exec(In(device_id));
+
+        assert_eq!(cpu.state.a, val)
     }
 }
