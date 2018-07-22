@@ -318,11 +318,9 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
             Stax(rp) if rp.is_basic() => {
                 self.stax(rp)
             }
-            Stax(_) => unimplemented!("Instruction {:?} should not exist!", instruction),
             Ldax(rp) if rp.is_basic() => {
                 self.ldax(rp)
             }
-            Ldax(_) => unimplemented!("Instruction {:?} should not exist!", instruction),
             Add(r) => {
                 self.add(r)
             }
@@ -467,7 +465,8 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
             Hlt => {
                 self.halt()
             }
-            _ => unimplemented!("Instruction {:?} not implemented yet!", instruction)
+            Stax(_) | Ldax(_) | Rim | Sim =>
+                unimplemented!("Instruction {:?} should not exist!", instruction)
         }
     }
 
