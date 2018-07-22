@@ -13,3 +13,4 @@ pub trait ToOpcode {
 pub mod disassemble;
 pub mod cpu;
 pub mod asm;
+pub mod io_bus;

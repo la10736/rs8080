@@ -5,7 +5,7 @@ use super::{
                    Reg, RegPair, RegPairValue, CondFlag, IrqAddr},
     Byte,
 };
-use std::ops::Deref;
+use io_bus::{OutputBus, InputBus};
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 struct RegByte {
@@ -358,31 +358,6 @@ impl MemoryBus {
 
     fn ref_mut(&mut self, address: Address) -> &mut u8 {
         &mut self.bank[address as usize]
-    }
-}
-
-pub trait OutputBus {
-    fn send(&self, id: Byte, data: Byte);
-}
-
-pub trait InputBus {
-    fn read(&self, id: Byte) -> Byte;
-}
-
-#[derive(Default, Clone, Copy)]
-pub struct VoidIOBus;
-impl OutputBus for VoidIOBus { fn send(&self, _id: u8, _data: u8) { } }
-impl InputBus for VoidIOBus { fn read(&self, _id: u8) -> u8 { 0x00 } }
-
-impl<T: InputBus, O: Deref<Target=T>> InputBus for O {
-    fn read(&self, id: Byte) -> Byte {
-        self.deref().read(id)
-    }
-}
-
-impl<T: OutputBus, O: Deref<Target=T>> OutputBus for O {
-    fn send(&self, id: Byte, data: Byte) {
-        self.deref().send(id, data)
     }
 }
 
@@ -1204,8 +1179,9 @@ mod test {
     use rstest::rstest_parametrize;
     use std::cell::RefCell;
     use std::rc::Rc;
+    use io_bus::{VoidIO, test::Loopback};
 
-    type Cpu = GenCpu<VoidIOBus, VoidIOBus>;
+    type Cpu = GenCpu<VoidIO, VoidIO>;
 
     fn cpu() -> Cpu {
         let state = State {
@@ -2757,7 +2733,7 @@ mod test {
 
         impl InputBus for Loop { fn read(&self, id: Byte) -> Byte { id } }
 
-        let mut cpu = GenCpu { input: Loop::default(), output: VoidIOBus::default(), ..Default::default() };
+        let mut cpu = GenCpu { input: Loop::default(), output: VoidIO::default(), ..Default::default() };
         let input_val = 0x42;
 
         cpu.exec(In(input_val));
@@ -2776,7 +2752,7 @@ mod test {
             }
         }
 
-        let mut cpu = GenCpu { input: VoidIOBus::default(), output: Out::default(), ..Default::default() };
+        let mut cpu = GenCpu { input: VoidIO::default(), output: Out::default(), ..Default::default() };
         let out_val = 0x31;
         let id = 0x12;
 
@@ -2788,31 +2764,9 @@ mod test {
         assert_eq!(cpu.output.data.borrow().unwrap(), out_val);
     }
 
-    struct FakeBus {
-        data: RefCell<[Option<u8>; 256]>
-    }
-
-    impl Default for FakeBus {
-        fn default() -> Self {
-            FakeBus { data: RefCell::new([None; 256]) }
-        }
-    }
-
-    impl OutputBus for FakeBus {
-        fn send(&self, id: u8, data: u8) {
-            self.data.borrow_mut()[id as usize] = Some(data)
-        }
-    }
-
-    impl InputBus for FakeBus {
-        fn read(&self, id: u8) -> u8 {
-            self.data.borrow()[id as usize].unwrap()
-        }
-    }
-
     #[test]
     fn test_input_output_loop() {
-        let io_loop: Rc<FakeBus> = Rc::default();
+        let io_loop: Rc<Loopback> = Rc::default();
         let mut cpu = GenCpu { input: io_loop.clone(), output: io_loop.clone(), ..Default::default() };
         let val = 0x31;
         let device_id = 0x12;
