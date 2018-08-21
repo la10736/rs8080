@@ -157,14 +157,10 @@ impl OutputBus for IO {
     fn send(&self, id: u8, data: Byte) {
         match id {
             SR_DATA_PORT => {
-                self.sr.replace(self.sr.clone()
-                    .into_inner()
-                    .push(data));
+                self.sr.borrow_mut().push(data);
             }
             SR_OFFSET_PORT => {
-                self.sr.replace(self.sr.clone()
-                    .into_inner()
-                    .set_offset(data));
+                self.sr.borrow_mut().set_offset(data);
             }
             SOUND_A_PORT | SOUND_B_PORT => debug!("Write to sound port[{}]={:02x}", id, data),
             DEBUG_PORT => debug!("Write to debug port[{}]={:02x}", id, data),

@@ -9,14 +9,12 @@ impl ShiftRegister {
         (self.value >> (8 - self.offset)) as u8
     }
 
-    pub fn push(mut self, upper: u8) -> Self {
+    pub fn push(&mut self, upper: u8) {
         self.value = ((upper as u16) << 8) | (self.value >> 8);
-        self
     }
 
-    pub fn set_offset(mut self, offset: u8) -> Self {
+    pub fn set_offset(&mut self, offset: u8) {
         self.offset = offset & 0x07;
-        self
     }
 }
 
@@ -47,15 +45,19 @@ mod test {
 
     #[test]
     fn push_upper_byte() {
-        let sr: ShiftRegister = 0b0110_0111_1010_1100.into();
+        let mut sr: ShiftRegister = 0b0110_0111_1010_1100.into();
 
-        assert_eq!(sr.push(0b1101_0100).value, 0b1101_0100_0110_0111);
+        sr.push(0b1101_0100);
+
+        assert_eq!(0b1101_0100_0110_0111, sr.value);
     }
 
     #[test]
     fn offset_should_use_just_lower_3_bits() {
-        let sr: ShiftRegister = 0b0110_0111_1010_1100.into();
+        let mut sr: ShiftRegister = 0b0110_0111_1010_1100.into();
 
-        assert_eq!(0b1100_1111, sr.set_offset(9).get())
+        sr.set_offset(9);
+
+        assert_eq!(0b1100_1111, sr.get())
     }
 }
