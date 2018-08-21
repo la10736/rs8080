@@ -15,21 +15,29 @@ trait MBank: Mmu {
     }
 }
 
+pub const ROM_SIZE: usize = 0x2000;
+pub const RAM_SIZE: usize = 0x0400;
+pub const VRAM_SIZE: usize = 0x1C00;
+pub const MIRROR_SIZE: usize = 0xC000;
+
 const ROM_OFFSET: usize = 0x0000;
-const ROM_SIZE: usize = 0x2000;
-
 const RAM_OFFSET: usize = 0x2000;
-const RAM_SIZE: usize = 0x0400;
-
 const VRAM_OFFSET: usize = 0x2400;
-const VRAM_SIZE: usize = 0x1C00;
 
 const MIRROR_OFFSET: usize = 0x4000;
-const MIRROR_SIZE: usize = 0xC000;
 
-struct Rom {
+pub struct Rom {
     data: [Byte; ROM_SIZE],
     black_hole: Byte,
+}
+
+impl From<[Byte; ROM_SIZE]> for Rom {
+    fn from(data: [u8; ROM_SIZE]) -> Self {
+        Rom {
+            data,
+            black_hole: 0,
+        }
+    }
 }
 
 impl Default for Rom {
@@ -98,8 +106,14 @@ impl Mmu for Ram {
     }
 }
 
-struct VRam {
+pub struct VRam {
     ptr: *mut Byte,
+}
+
+impl From<*mut Byte> for VRam {
+    fn from(ptr: *mut Byte) -> Self {
+        VRam { ptr }
+    }
 }
 
 impl VRam {
@@ -170,11 +184,21 @@ impl Mmu for Mirror {
 }
 
 #[derive(Default)]
-struct SIMmu {
+pub struct SIMmu {
     rom: Rom,
     ram: Ram,
     vram: VRam,
     mirror: Mirror,
+}
+
+impl SIMmu {
+    pub fn new(rom: Rom, vram: VRam) -> SIMmu {
+        SIMmu {
+            rom,
+            vram,
+            ..Default::default()
+        }
+    }
 }
 
 impl Mmu for SIMmu {

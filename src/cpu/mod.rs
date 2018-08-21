@@ -268,7 +268,7 @@ pub struct Cpu<M: Mmu, O: OutputBus, I: InputBus> {
 
     interrupt_enabled: bool,
 
-    bus: M,
+    mmu: M,
 
     output: O,
     input: I,
@@ -281,8 +281,9 @@ impl<M, O, I>
           I: InputBus + Default
 {
     fn default() -> Self {
-        Cpu {interrupt_enabled: true,
-            bus: Default::default(),
+        Cpu {
+            interrupt_enabled: true,
+            mmu: Default::default(),
             output: Default::default(),
             state: Default::default(),
             run_state: Default::default(),
@@ -293,6 +294,17 @@ impl<M, O, I>
 
 /// External interface
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+    pub fn new(mmu: M, output: O, input: I) -> Self {
+        Cpu {
+            state: Default::default(),
+            run_state: Default::default(),
+            interrupt_enabled: true,
+            mmu,
+            output,
+            input,
+        }
+    }
+
     pub fn exec(&mut self, instruction: Instruction) {
         if !self.is_running() {
             return;
@@ -510,7 +522,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
             E => self.state.e,
             H => self.state.h,
             L => self.state.l,
-            M => self.bus.read_byte(self.hl().val).into(),
+            M => self.mmu.read_byte(self.hl().val).into(),
         }
     }
 
@@ -603,12 +615,12 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn get_m(&self) -> RegByte {
         let address = self.hl().val;
-        self.bus.read_byte(address).into()
+        self.mmu.read_byte(address).into()
     }
 
     fn set_m<W: Into<Byte>>(&mut self, val: W) {
         let address = self.hl().val;
-        self.bus.write_byte(address, val.into());
+        self.mmu.write_byte(address, val.into());
     }
 
     fn fix_static_flags(&mut self, r: Reg) {
@@ -617,7 +629,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn push_val(&mut self, val: Byte) {
         self.state.sp.overflow_sub(1);
-        self.bus.write_byte(self.state.sp.into(), val);
+        self.mmu.write_byte(self.state.sp.into(), val);
     }
 
     fn push_addr(&mut self, address: Address) {
@@ -636,7 +648,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn pop_val(&mut self) -> Byte {
-        let val = self.bus.read_byte(self.state.sp.into());
+        let val = self.mmu.read_byte(self.state.sp.into());
         self.state.sp.overflow_add(1);
         val
     }
@@ -767,12 +779,12 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn stax(&mut self, rp: RegPair) {
         let address = self.address(rp);
-        self.bus.write_byte(address, self.state.a.into());
+        self.mmu.write_byte(address, self.state.a.into());
     }
 
     fn ldax(&mut self, rp: RegPair) {
         let address = self.address(rp);
-        self.state.a = self.bus.read_byte(address).into();
+        self.state.a = self.mmu.read_byte(address).into();
     }
 }
 
@@ -1013,8 +1025,8 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn xthl(&mut self) {
         let sp = self.state.sp.into();
-        swap(self.bus.ref_mut(sp), &mut self.state.h.val);
-        swap(self.bus.ref_mut(sp + 1), &mut self.state.l.val);
+        swap(self.mmu.ref_mut(sp), &mut self.state.h.val);
+        swap(self.mmu.ref_mut(sp + 1), &mut self.state.l.val);
     }
 
     fn sphl(&mut self) {
@@ -1026,22 +1038,22 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn sta(&mut self, address: Address) {
         let value = self.state.a.val;
-        self.bus.write_byte(address, value);
+        self.mmu.write_byte(address, value);
     }
 
     fn lda(&mut self, address: Address) {
-        self.state.a = self.bus.read_byte(address).into();
+        self.state.a = self.mmu.read_byte(address).into();
     }
 
     fn shld(&mut self, address: Address) {
         let hl = self.hl().into();
-        let bus = &mut self.bus;
+        let bus = &mut self.mmu;
         bus.write_word(address, hl);
     }
 
     fn lhld(&mut self, address: Address) {
-        self.state.h = self.bus.read_byte(address).into();
-        self.state.l = self.bus.read_byte(address + 1).into();
+        self.state.h = self.mmu.read_byte(address).into();
+        self.state.l = self.mmu.read_byte(address + 1).into();
     }
 }
 

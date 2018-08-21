@@ -46,7 +46,7 @@ enum Ev {
     P2Right(bool),
 }
 
-struct IO {
+pub struct IO {
     port1: RefCell<u8>,
     port2: RefCell<u8>,
     sr: RefCell<ShiftRegister>,

@@ -126,7 +126,7 @@ impl CpuQuery for Address {
     type Result = Byte;
 
     fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
-        cpu.bus.read_byte(*self)
+        cpu.mmu.read_byte(*self)
     }
 }
 
@@ -294,8 +294,8 @@ mod pair_register {
 
         cpu.exec(Push(BytePair::DE));
 
-        assert_eq!(cpu.bus.read_byte(sp - 1), 0x8f);
-        assert_eq!(cpu.bus.read_byte(sp - 2), 0x9d);
+        assert_eq!(cpu.mmu.read_byte(sp - 1), 0x8f);
+        assert_eq!(cpu.mmu.read_byte(sp - 2), 0x9d);
     }
 
     #[rstest]
@@ -317,8 +317,8 @@ mod pair_register {
 
         cpu.exec(Push(BytePair::AF));
 
-        assert_eq!(cpu.bus.read_byte(sp - 1), 0xde);
-        assert_eq!(cpu.bus.read_byte(sp - 2), 0x43);
+        assert_eq!(cpu.mmu.read_byte(sp - 1), 0xde);
+        assert_eq!(cpu.mmu.read_byte(sp - 2), 0x43);
     }
 
     #[rstest_parametrize(
@@ -341,8 +341,8 @@ mod pair_register {
     #[rstest]
     fn pop_should_recover_regs(mut cpu: Cpu) {
         let sp = 0x321a;
-        cpu.bus.write_byte(sp, 0x8f);
-        cpu.bus.write_byte(sp + 1, 0x9d);
+        cpu.mmu.write_byte(sp, 0x8f);
+        cpu.mmu.write_byte(sp + 1, 0x9d);
         cpu.state.set_sp(sp);
 
         cpu.exec(Pop(BytePair::DE));
@@ -365,8 +365,8 @@ mod pair_register {
     fn pop_should_recover_flags_and_accumulator(mut cpu: Cpu) {
         let sp = 0x2c00;
         cpu.state.set_sp(sp);
-        cpu.bus.write_byte(sp, 0xc3);
-        cpu.bus.write_byte(sp + 1, 0xff);
+        cpu.mmu.write_byte(sp, 0xc3);
+        cpu.mmu.write_byte(sp + 1, 0xff);
 
         cpu.exec(Pop(BytePair::AF));
 
@@ -521,13 +521,13 @@ mod pair_register {
         let sp = 0x10ad;
         cpu.set_hl(0x0b3c);
         cpu.state.set_sp(sp);
-        cpu.bus.write(sp, &[0xf0, 0x0d]);
+        cpu.mmu.write(sp, &[0xf0, 0x0d]);
 
         cpu.exec(Xthl);
 
         assert_eq!(cpu.hl(), 0xf00d);
-        assert_eq!(cpu.bus.read_byte(sp), 0x0b);
-        assert_eq!(cpu.bus.read_byte(sp + 1), 0x3c);
+        assert_eq!(cpu.mmu.read_byte(sp), 0x0b);
+        assert_eq!(cpu.mmu.read_byte(sp + 1), 0x3c);
     }
 
     #[rstest]
@@ -577,7 +577,7 @@ mod immediate {
 
         cpu.exec(Mvi(Reg::M, val));
 
-        assert_eq!(cpu.bus.read_byte(address), val);
+        assert_eq!(cpu.mmu.read_byte(address), val);
     }
 }
 
@@ -773,7 +773,7 @@ mod data_transfer {
 
         cpu.exec(Stax(RegPair::BC));
 
-        assert_eq!(cpu.bus.read_byte(0x3f16), 0x32);
+        assert_eq!(cpu.mmu.read_byte(0x3f16), 0x32);
     }
 
     #[rstest_parametrize(
@@ -789,7 +789,7 @@ mod data_transfer {
     #[rstest]
     fn ldax_should_load_accumulator(mut cpu: Cpu) {
         let address = 0x78a2;
-        cpu.bus.write_byte(address, 0x21);
+        cpu.mmu.write_byte(address, 0x21);
         cpu.set_de(address);
         cpu.state.set_a(0xad);
 
@@ -1143,14 +1143,14 @@ fn sta_should_store_accumulator(mut cpu: Cpu) {
 
     cpu.exec(Sta(addr));
 
-    assert_eq!(accumulator, cpu.bus.read_byte(addr));
+    assert_eq!(accumulator, cpu.mmu.read_byte(addr));
 }
 
 #[rstest]
 fn lda_should_load_accumulator(mut cpu: Cpu) {
     let expected = 0xae;
     let addr = 0x320f;
-    cpu.bus.write_byte(addr, expected);
+    cpu.mmu.write_byte(addr, expected);
 
     cpu.exec(Lda(addr));
 
@@ -1165,14 +1165,14 @@ fn shld_should_store_hl_pair(mut cpu: Cpu) {
 
     cpu.exec(Shld(addr));
 
-    assert_eq!(hl, cpu.bus.read_word(addr));
+    assert_eq!(hl, cpu.mmu.read_word(addr));
 }
 
 #[rstest]
 fn lhld_should_load_hl_pair(mut cpu: Cpu) {
     let hl = 0xd1f2;
     let addr = 0x2031;
-    cpu.bus.write_word(addr, hl);
+    cpu.mmu.write_word(addr, hl);
 
     cpu.exec(Lhld(addr));
 
