@@ -6,7 +6,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use io_bus::{VoidIO, test::Loopback};
 
-type Cpu = GenCpu<VoidIO, VoidIO>;
+type Cpu = GenCpu<PlainMemory, VoidIO, VoidIO>;
+type PlainMemoryCpu<O, I> = GenCpu<PlainMemory, O, I>;
 
 fn cpu() -> Cpu {
     let state = State {
@@ -1551,133 +1552,145 @@ fn nop_should_just_change_pc(mut cpu: Cpu) {
     assert_eq!(state, cpu.state);
 }
 
-#[test]
-fn input_should_read_from_bus_into_accumulator() {
-    #[derive(Default)]
-    struct Loop;
+mod io {
+    use super::*;
 
-    impl InputBus for Loop { fn read(&self, id: Byte) -> Byte { id } }
+    #[test]
+    fn input_should_read_from_bus_into_accumulator() {
+        #[derive(Default)]
+        struct Loop;
 
-    let mut cpu = GenCpu { input: Loop::default(), output: VoidIO::default(), ..Default::default() };
-    let input_val = 0x42;
+        impl InputBus for Loop { fn read(&self, id: Byte) -> Byte { id } }
 
-    cpu.exec(In(input_val));
+        let mut cpu = PlainMemoryCpu { input: Loop::default(), output: VoidIO::default(), ..Default::default() };
+        let input_val = 0x42;
 
-    assert_eq!(cpu.state.a, input_val)
-}
+        cpu.exec(In(input_val));
 
-#[test]
-fn output_should_send_accumulator_to_output_bus() {
-    #[derive(Default)]
-    struct Out {id: RefCell<Option<Byte>>, data: RefCell<Option<Byte>>};
-    impl OutputBus for Out {
-        fn send(&self, id: Byte, data: Byte) {
-            self.id.replace(Some(id));
-            self.data.replace(Some(data));
-        }
+        assert_eq!(cpu.state.a, input_val)
     }
 
-    let mut cpu = GenCpu { input: VoidIO::default(), output: Out::default(), ..Default::default() };
-    let out_val = 0x31;
-    let id = 0x12;
+    #[test]
+    fn output_should_send_accumulator_to_output_bus() {
+        #[derive(Default)]
+        struct Out {id: RefCell<Option<Byte>>, data: RefCell<Option<Byte>>};
+        impl OutputBus for Out {
+            fn send(&self, id: Byte, data: Byte) {
+                self.id.replace(Some(id));
+                self.data.replace(Some(data));
+            }
+        }
 
-    cpu.state.set_a(out_val);
+        let mut cpu = PlainMemoryCpu { input: VoidIO::default(), output: Out::default(), ..Default::default() };
+        let out_val = 0x31;
+        let id = 0x12;
 
-    cpu.exec(Out(id));
+        cpu.state.set_a(out_val);
 
-    assert_eq!(cpu.output.id.borrow().unwrap(), id);
-    assert_eq!(cpu.output.data.borrow().unwrap(), out_val);
+        cpu.exec(Out(id));
+
+        assert_eq!(cpu.output.id.borrow().unwrap(), id);
+        assert_eq!(cpu.output.data.borrow().unwrap(), out_val);
+    }
+
+    #[test]
+    fn input_output_loop() {
+        let io_loop: Rc<Loopback> = Rc::default();
+        let mut cpu = PlainMemoryCpu { input: io_loop.clone(), output: io_loop.clone(), ..Default::default() };
+        let val = 0x31;
+        let device_id = 0x12;
+
+        cpu.state.set_a(val);
+        cpu.exec(Out(device_id));
+
+        cpu.state.set_a(0x00);
+        cpu.exec(In(device_id));
+
+        assert_eq!(cpu.state.a, val)
+    }
 }
 
-#[test]
-fn test_input_output_loop() {
-    let io_loop: Rc<Loopback> = Rc::default();
-    let mut cpu = GenCpu { input: io_loop.clone(), output: io_loop.clone(), ..Default::default() };
-    let val = 0x31;
-    let device_id = 0x12;
+mod halt {
+    use super::*;
 
-    cpu.state.set_a(val);
-    cpu.exec(Out(device_id));
+    #[rstest]
+    fn should_advance_pc(mut cpu: Cpu) {
+        cpu.state.set_pc(0x3200);
 
-    cpu.state.set_a(0x00);
-    cpu.exec(In(device_id));
+        cpu.exec(Hlt);
 
-    assert_eq!(cpu.state.a, val)
+        assert_eq!(cpu.state.pc, 0x3201);
+    }
+
+    #[rstest]
+    fn should_enter_in_stopped_state(mut cpu: Cpu) {
+        cpu.exec(Hlt);
+
+        assert!(cpu.is_stopped());
+    }
+
+    #[rstest]
+    fn cpu_in_stopped_state_should_ignore_commands(mut cpu: Cpu) {
+        let state = cpu.state.clone();
+
+        cpu.run_state = CpuState::Stopped;
+        assert!(cpu.is_stopped());
+
+        cpu.exec(Mov(Reg::B, Reg::H));
+        cpu.exec(Jump(0x3214));
+        cpu.exec(Add(Reg::C));
+        cpu.exec(Pop(BytePair::DE));
+
+        assert_eq!(state, cpu.state);
+    }
 }
 
-#[rstest]
-fn halt_should_advance_pc(mut cpu: Cpu) {
-    cpu.state.set_pc(0x3200);
+mod irq_instruction {
+    use super::*;
 
-    cpu.exec(Hlt);
+    #[rstest]
+    fn should_not_advance_pc(mut cpu: Cpu) {
+        let address = 0x3200;
+        cpu.state.set_pc(address);
 
-    assert_eq!(cpu.state.pc, 0x3201);
-}
+        cpu.irq(IrqCmd::RawCmd(Nop));
 
-#[rstest]
-fn halt_should_enter_instopped_state(mut cpu: Cpu) {
-    cpu.exec(Hlt);
+        assert_eq!(cpu.state.pc, address);
+    }
 
-    assert!(cpu.is_stopped());
-}
+    #[rstest]
+    fn should_disable_irq(mut cpu: Cpu) {
+        assert!(cpu.interrupt_enabled);
 
-#[rstest]
-fn cpu_in_stopped_state_should_ignore_commands(mut cpu: Cpu) {
-    let state = cpu.state.clone();
+        cpu.irq(IrqCmd::Irq3);
 
-    cpu.run_state = CpuState::Stopped;
-    assert!(cpu.is_stopped());
+        assert!(!cpu.interrupt_enabled);
+    }
 
-    cpu.exec(Mov(Reg::B, Reg::H));
-    cpu.exec(Jump(0x3214));
-    cpu.exec(Add(Reg::C));
-    cpu.exec(Pop(BytePair::DE));
+    #[rstest]
+    fn should_wake_up_cpu(mut cpu: Cpu) {
+        cpu.run_state = CpuState::Stopped;
 
-    assert_eq!(state, cpu.state);
-}
+        cpu.irq(IrqCmd::Irq3);
 
-#[rstest]
-fn irq_instruction_should_not_advance_pc(mut cpu: Cpu) {
-    let address = 0x3200;
-    cpu.state.set_pc(address);
+        assert!(cpu.is_running());
+    }
 
-    cpu.irq(IrqCmd::RawCmd(Nop));
+    #[rstest]
+    fn should_execute_given_instruction(mut cpu: Cpu) {
+        cpu.state.set_pc(0x1234);
 
-    assert_eq!(cpu.state.pc, address);
-}
+        cpu.irq(IrqCmd::Irq3);
 
-#[rstest]
-fn irq_instruction_should_disable_irq(mut cpu: Cpu) {
-    assert!(cpu.interrupt_enabled);
+        assert_eq!(cpu.state.pc, 0x0018);
+    }
 
-    cpu.irq(IrqCmd::Irq3);
+    #[rstest]
+    fn raw_execution(mut cpu: Cpu) {
+        cpu.state.set_pc(0x1234);
 
-    assert!(!cpu.interrupt_enabled);
-}
+        cpu.irq(IrqCmd::RawCmd(Ei));
 
-#[rstest]
-fn irq_instruction_should_wake_up_cpu(mut cpu: Cpu) {
-    cpu.run_state = CpuState::Stopped;
-
-    cpu.irq(IrqCmd::Irq3);
-
-    assert!(cpu.is_running());
-}
-
-#[rstest]
-fn irq_instruction_should_execute_given_instruction(mut cpu: Cpu) {
-    cpu.state.set_pc(0x1234);
-
-    cpu.irq(IrqCmd::Irq3);
-
-    assert_eq!(cpu.state.pc, 0x0018);
-}
-
-#[rstest]
-fn irq_instruction_raw_execution(mut cpu: Cpu) {
-    cpu.state.set_pc(0x1234);
-
-    cpu.irq(IrqCmd::RawCmd(Ei));
-
-    assert!(cpu.interrupt_enabled);
+        assert!(cpu.interrupt_enabled);
+    }
 }

@@ -3,5 +3,9 @@ name = "rs8080"
 version = "0.1.0"
 authors = ["michele <michele.damico@gmail.com>"]
 
+[dependencies]
+log = "*"
+simple_logger = "*"
+
 [dev-dependencies]
 rstest = { git = "https://github.com/la10736/rstest" }

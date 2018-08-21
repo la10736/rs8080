@@ -11,6 +11,7 @@ use io_bus::{OutputBus, InputBus};
 mod test;
 
 use ::registers::*;
+use Word;
 
 impl Into<Address> for IrqAddr {
     fn into(self) -> Address {
@@ -171,34 +172,30 @@ impl State {
 }
 
 #[derive(Clone)]
-struct MemoryBus {
+struct PlainMemory {
     bank: [u8; 0x10000]
 }
 
-impl Default for MemoryBus {
+impl Default for PlainMemory {
     fn default() -> Self {
-        MemoryBus { bank: [0; 0x10000] }
+        PlainMemory { bank: [0; 0x10000] }
     }
 }
 
-impl MemoryBus {
-    fn read_byte(&self, address: Address) -> u8 {
-        self.bank[address as usize]
-    }
+pub trait Mmu {
+    fn read_byte(&self, address: Address) -> u8;
 
-    fn write_byte(&mut self, address: Address, val: u8) {
-        self.bank[address as usize] = val
-    }
+    fn write_byte(&mut self, address: Address, val: u8);
+
+    fn ref_mut(&mut self, address: Address) -> &mut u8;
 
     fn read_word(&self, address: Address) -> u16 {
-        let addr = address as usize;
-        ((self.bank[addr] as u16) << 8) | (self.bank[addr + 1] as u16)
+        ((self.read_byte(address) as u16) << 8) | (self.read_byte(address + 1) as u16)
     }
 
-    fn write_word(&mut self, address: Address, val: u16) {
-        let addr = address as usize;
-        self.bank[addr] = (val >> 8) as u8;
-        self.bank[addr + 1] = (val & 0xff) as u8;
+    fn write_word(&mut self, address: Address, val: Word) {
+        self.write_byte(address, (val >> 8) as Byte);
+        self.write_byte(address + 1, (val & 0xff) as Byte);
     }
 
     fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) {
@@ -206,6 +203,16 @@ impl MemoryBus {
             |(off, v)|
                 self.write_byte(address + (off as Address), *v)
         )
+    }
+}
+
+impl Mmu for PlainMemory {
+    fn read_byte(&self, address: Address) -> Byte {
+        self.bank[address as usize]
+    }
+
+    fn write_byte(&mut self, address: Address, val: Byte) {
+        self.bank[address as usize] = val
     }
 
     fn ref_mut(&mut self, address: Address) -> &mut u8 {
@@ -255,19 +262,24 @@ impl Into<Instruction> for IrqCmd {
 }
 
 #[derive(Clone)]
-pub struct Cpu<O: OutputBus, I: InputBus> {
+pub struct Cpu<M: Mmu, O: OutputBus, I: InputBus> {
     state: State,
     run_state: CpuState,
 
     interrupt_enabled: bool,
 
-    bus: MemoryBus,
+    bus: M,
 
     output: O,
     input: I,
 }
 
-impl<O: OutputBus + Default, I: InputBus + Default> Default for Cpu<O, I> {
+impl<M, O, I>
+    Default for Cpu<M, O, I>
+    where M: Mmu + Default,
+          O: OutputBus + Default,
+          I: InputBus + Default
+{
     fn default() -> Self {
         Cpu {interrupt_enabled: true,
             bus: Default::default(),
@@ -280,7 +292,7 @@ impl<O: OutputBus + Default, I: InputBus + Default> Default for Cpu<O, I> {
 }
 
 /// External interface
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     pub fn exec(&mut self, instruction: Instruction) {
         if !self.is_running() {
             return;
@@ -486,7 +498,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Utilities
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn reg(&self, r: self::Reg) -> RegByte {
         use self::Reg::*;
@@ -646,12 +658,12 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Carry bit Instructions
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn nop(&mut self) {}
 }
 
 /// Carry bit Instructions
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn cmc(&mut self) {
         self.state.flags.toggle(Flag::Carry);
     }
@@ -662,7 +674,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 
 
 /// Immediate Instructions
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn lxi(&mut self, v: self::RegPairValue) {
         use self::RegPairValue::*;
         match v {
@@ -709,7 +721,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Single Register Instructions
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn cma(&mut self) {
         self.reg_apply(self::Reg::A, |r| r.one_complement());
     }
@@ -747,7 +759,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Data transfer Instruction
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn mov(&mut self, f: Reg, t: Reg) {
         let orig = self.reg(f);
         self.reg_apply(t, |dest| { *dest = orig; })
@@ -765,7 +777,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Carry and AuxCarry
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn carry(&self) -> bool {
         self.state.flag(Flag::Carry)
     }
@@ -792,7 +804,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Accumulator
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn accumulator_add(&mut self, other: u8) -> () {
         let auxcarry = (self.state.a.low() + (other & 0x0f)) > 0x0f;
         let carry = self.state.a.overflow_add(other);
@@ -897,7 +909,7 @@ const RIGHT_BIT: u8 = 0;
 const LEFT_BIT: u8 = 7;
 
 /// Rotate
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn rlc(&mut self) {
         let carry = self.state.a.rotate_left();
         self.set_carry_state(carry);
@@ -928,7 +940,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Register Pair Instructions
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn push(&mut self, bp: BytePair) {
         use self::BytePair::*;
         match bp {
@@ -1011,7 +1023,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Direct Addressing Instructions
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn sta(&mut self, address: Address) {
         let value = self.state.a.val;
         self.bus.write_byte(address, value);
@@ -1050,7 +1062,7 @@ impl Into<(Flag, bool)> for CondFlag {
 }
 
 /// Jump Instructions
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn pchl(&mut self) {
         self.state.pc = self.hl();
     }
@@ -1094,7 +1106,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Interrupts
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn ei(&mut self) {
         self.interrupt_enabled = true;
     }
@@ -1105,7 +1117,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// IO
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn input(&mut self, id: Byte) {
         let val = self.input.read(id);
         self.state.set_a(val);
@@ -1117,7 +1129,7 @@ impl<O: OutputBus, I: InputBus> Cpu<O, I> {
 }
 
 /// Halt
-impl<O: OutputBus, I: InputBus> Cpu<O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn halt(&mut self) {
         self.run_state = CpuState::Stopped;
     }
