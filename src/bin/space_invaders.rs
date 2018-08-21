@@ -6,7 +6,6 @@ extern crate rstest;
 extern crate log;
 extern crate simple_logger;
 
-mod shift_register;
 mod si_memory;
 mod si_io;
 
