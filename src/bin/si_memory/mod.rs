@@ -3,6 +3,11 @@ use rs8080::Address;
 use rs8080::Byte;
 use std::ptr;
 
+use rs8080::cpu::Result;
+use std::result::Result as StdResult;
+use rs8080::cpu::CpuError;
+use rs8080::cpu::{str_memory, DUMP_MEMORY_COLUMNS};
+
 trait MBank: Mmu {
     fn offset(&self) -> usize;
     fn size(&self) -> usize;
@@ -57,17 +62,22 @@ impl MBank for Rom {
 }
 
 impl Mmu for Rom {
-    fn read_byte(&self, address: Address) -> Byte {
-        self.data[self.address(address)]
+    fn read_byte(&self, address: Address) -> Result<Byte> {
+        Ok(self.data[self.address(address)])
     }
 
-    fn write_byte(&mut self, address: Address, val: Byte) {
-        warn!("Try to write in rom [{:04x}]={:02x}", address, val);
+    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
+        error!("Try to write in rom [{:04x}]={:02x}", address, val);
+        CpuError::memory_write(address, val)
     }
 
-    fn ref_mut(&mut self, address: Address) -> &mut Byte {
-        warn!("Try to get a ref_mut in rom at {:04x}", address);
-        &mut self.black_hole
+    fn dump(&self) -> String {
+        str_memory(&self.data, self.offset(), DUMP_MEMORY_COLUMNS)
+    }
+
+    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte> {
+        error!("Try to get a ref_mut in rom at {:04x}", address);
+        CpuError::memory_ref(address)
     }
 }
 
@@ -92,17 +102,22 @@ impl MBank for Ram {
 }
 
 impl Mmu for Ram {
-    fn read_byte(&self, address: Address) -> Byte {
-        self.data[self.address(address)]
+    fn read_byte(&self, address: Address) -> Result<Byte> {
+        Ok(self.data[self.address(address)])
     }
 
-    fn write_byte(&mut self, address: Address, val: Byte) {
+    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
         let address = self.address(address);
         self.data[address] = val;
+        Ok(())
     }
 
-    fn ref_mut(&mut self, address: Address) -> &mut Byte {
-        &mut self.data[self.address(address)]
+    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte> {
+        Ok(&mut self.data[self.address(address)])
+    }
+
+    fn dump(&self) -> String {
+        str_memory(&self.data, self.offset(), DUMP_MEMORY_COLUMNS)
     }
 }
 
@@ -139,16 +154,30 @@ impl MBank for VRam {
 }
 
 impl Mmu for VRam {
-    fn read_byte(&self, address: Address) -> Byte {
-        unsafe { *self.ptr.offset(address as isize) }
+    fn read_byte(&self, address: Address) -> Result<Byte> {
+        let addr = self.address(address);
+        let val = unsafe {
+            *self.ptr.offset(addr as isize)
+        };
+        debug!("Read Vram [0x{:04x}]=0x{:02x}", address, val);
+        Ok(val)
     }
 
-    fn write_byte(&mut self, address: Address, val: Byte) {
+    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
+        debug!("Write Vram [0x{:04x}]=0x{:02x}", address, val);
+        let address = self.address(address);
         unsafe { *self.ptr.offset(address as isize) = val }
+        Ok(())
     }
 
-    fn ref_mut(&mut self, address: u16) -> &mut u8 {
-        unsafe { &mut *self.ptr.offset(address as isize) }
+    fn dump(&self) -> String {
+        format!("No Data!")
+    }
+
+    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte> {
+        warn!("Ref Vram 0x{:04x}", address);
+        let address = self.address(address);
+        Ok(unsafe { &mut *self.ptr.offset(address as isize) })
     }
 }
 
@@ -168,18 +197,20 @@ impl MBank for Mirror {
 const MIRROR_DEFAULT: Byte = 0xDE;
 
 impl Mmu for Mirror {
-    fn read_byte(&self, address: Address) -> Byte {
-        warn!("Read at mirror address {:04x}", address);
-        MIRROR_DEFAULT
+    fn read_byte(&self, address: Address) -> Result<Byte> {
+        CpuError::memory_read(address)
     }
 
-    fn write_byte(&mut self, address: Address, val: Byte) {
-        warn!("Write at mirror [{:04x}]= {:02x}", address, val);
+    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
+        CpuError::memory_write(address, val)
     }
 
-    fn ref_mut(&mut self, address: Address) -> &mut u8 {
-        warn!("Try to get a ref_mut in mirror at {:04x}", address);
-        &mut self.black_hole
+    fn dump(&self) -> String {
+        format!("Just mirror bank!")
+    }
+
+    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte> {
+        CpuError::memory_ref(address)
     }
 }
 
@@ -202,7 +233,7 @@ impl SIMmu {
 }
 
 impl Mmu for SIMmu {
-    fn read_byte(&self, address: Address) -> Byte {
+    fn read_byte(&self, address: Address) -> Result<Byte> {
         if self.rom.contains(address) {
             self.rom.read_byte(address)
         } else if self.ram.contains(address) {
@@ -216,21 +247,32 @@ impl Mmu for SIMmu {
         }
     }
 
-    fn write_byte(&mut self, address: Address, val: Byte) {
+    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
         if self.rom.contains(address) {
-            self.rom.write_byte(address, val);
+            self.rom.write_byte(address, val)
         } else if self.ram.contains(address) {
-            self.ram.write_byte(address, val);
+            self.ram.write_byte(address, val)
         } else if self.vram.contains(address) {
-            self.vram.write_byte(address, val);
+            self.vram.write_byte(address, val)
         } else if self.mirror.contains(address) {
-            self.mirror.write_byte(address, val);
+            self.mirror.write_byte(address, val)
         } else {
             unreachable!()
         }
     }
 
-    fn ref_mut(&mut self, address: u16) -> &mut u8 {
+    fn dump(&self) -> String {
+        format!(r#"Rom:
+{}
+Ram:
+{}
+VRam:
+{}
+Mirror:
+{}"#, self.rom.dump(), self.ram.dump(), self.vram.dump(), self.mirror.dump() )
+    }
+
+    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte> {
         if self.rom.contains(address) {
             self.rom.ref_mut(address)
         } else if self.ram.contains(address) {
@@ -266,7 +308,7 @@ mod test {
         fn write_and_read(mut zmem: SIMmu, address: Address, value: Byte) {
             zmem.write_byte(address, value);
 
-            assert_eq!(value, zmem.read_byte(address))
+            assert_eq!(Ok(value), zmem.read_byte(address))
         }
 
         #[rstest]
@@ -275,11 +317,11 @@ mod test {
             let val = 0x42;
 
             {
-                let r = zmem.ref_mut(address);
+                let r = zmem.ref_mut(address).unwrap();
 
                 *r = val;
             }
-            assert_eq!(val, zmem.read_byte(address));
+            assert_eq!(Ok(val), zmem.read_byte(address));
         }
     }
 
@@ -292,10 +334,8 @@ mod test {
         case(0x1203, 0xE1),
         case(0x1FFF, 0x01),
         )]
-        fn write_byte_should_be_ignored(mut zmem: SIMmu, address: Address, value: Byte) {
-            zmem.write_byte(address, value);
-
-            assert_eq!(0x00, zmem.read_byte(address))
+        fn write_byte_error(mut zmem: SIMmu, address: Address, value: Byte) {
+            assert!(zmem.write_byte(address, value).is_err());
         }
 
         #[rstest_parametrize(
@@ -308,20 +348,14 @@ mod test {
             let raw_address = zmem.rom.address(address);
             zmem.rom.data[raw_address] = value;
 
-            assert_eq!(value, zmem.read_byte(address))
+            assert_eq!(Ok(value), zmem.read_byte(address))
         }
 
         #[rstest]
-        fn ref_mut_should_be_ignored(mut zmem: SIMmu) {
+        fn ref_mut_error(mut zmem: SIMmu) {
             let address = (ROM_OFFSET + 0x1278) as Address;
             let val = 0x32;
-
-            {
-                let r = zmem.ref_mut(address);
-
-                *r = val;
-            }
-            assert_eq!(0x00, zmem.read_byte(address));
+            assert!(zmem.ref_mut(address).is_err());
         }
     }
 
@@ -345,7 +379,7 @@ mod test {
             let (mut mem, _) = mem;
             mem.write_byte(address, value);
 
-            assert_eq!(value, mem.read_byte(address))
+            assert_eq!(Ok(value), mem.read_byte(address))
         }
 
         #[rstest]
@@ -355,11 +389,11 @@ mod test {
             let val = 0xF2;
 
             {
-                let r = mem.ref_mut(address);
+                let r = mem.ref_mut(address).unwrap();
 
                 *r = val;
             }
-            assert_eq!(val, mem.read_byte(address));
+            assert_eq!(Ok(val), mem.read_byte(address));
         }
     }
 
@@ -372,23 +406,15 @@ mod test {
         case(0x5420, 0xA5),
         case(0xFFFF, 0x1A),
         )]
-        fn write_ignored(mut zmem: SIMmu, address: Address, value: Byte) {
-            zmem.write_byte(address, value);
-
-            assert_eq!(MIRROR_DEFAULT, zmem.read_byte(address));
+        fn write_error(mut zmem: SIMmu, address: Address, value: Byte) {
+            assert!(zmem.write_byte(address, value).is_err());
         }
 
         #[rstest]
-        fn ref_mut_should_be_ignored(mut zmem: SIMmu) {
+        fn ref_mut_error(mut zmem: SIMmu) {
             let address = (MIRROR_OFFSET + 0x1234) as Address;
-            let val = 0x32;
 
-            {
-                let r = zmem.ref_mut(address);
-
-                *r = val;
-            }
-            assert_eq!(MIRROR_DEFAULT, zmem.read_byte(address));
+            assert!(zmem.ref_mut(address).is_err());
         }
     }
 }

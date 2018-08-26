@@ -1,6 +1,8 @@
 #![feature(proc_macro)]
 #[cfg(test)]
 extern crate rstest;
+#[macro_use]
+extern crate log;
 
 pub type Byte = u8;
 pub type Word = u16;

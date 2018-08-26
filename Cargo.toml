@@ -6,6 +6,7 @@ authors = ["michele <michele.damico@gmail.com>"]
 [dependencies]
 log = "*"
 simple_logger = "*"
+minifb = "*"
 
 [dev-dependencies]
 rstest = { git = "https://github.com/la10736/rstest" }

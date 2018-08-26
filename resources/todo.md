@@ -1,0 +1,21 @@
+# TODO
+
+- [X] Dump Stack
+- [ ] Register and dump last opcodes
+- [ ] Find bug that mess stack
+- [ ] Try Release Performance
+- [ ] Some test about timing (clocks) and error Propagation
+- [ ] Implement sync
+- [ ] Implement Buttons
+- [ ] Implement Game options
+- [ ] Command Line Interface
+- [ ] Rotate screen
+- [ ] Scale screen
+- [ ] Extract MMU from Cpu
+- [ ] Profile and optimize
+- [ ] RsTest should raise errors
+- [ ] Save state and memory
+- [ ] Recover from saved state
+- [ ] Clear all warning
+- [ ] Multithreading Cpu/Gpu
+- [ ] Vram as remote (send write command)

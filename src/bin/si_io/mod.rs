@@ -8,7 +8,7 @@ use self::shift_register::ShiftRegister;
 
 const PORT1: u8 = 0x01;
 const DEFAULT_PORT1: u8 = 0x01;
-const PORT2: u8 = 0x00;
+const PORT2: u8 = 0x02;
 const DEFAULT_PORT2: u8 = 0x00;
 const PORT3: u8 = 0x03;
 
@@ -16,7 +16,7 @@ const SR_OFFSET_PORT: u8 = 0x02;
 const SR_DATA_PORT: u8 = 0x04;
 const SOUND_A_PORT: u8 = 0x03;
 const SOUND_B_PORT: u8 = 0x05;
-const DEBUG_PORT: u8 = 0x06;
+const WATCHDOG_PORT: u8 = 0x06;
 
 const COIN_BIT: u8 = 0x00;
 const TILT_BIT: u8 = 0x02;
@@ -165,7 +165,7 @@ impl OutputBus for IO {
                 self.sr.borrow_mut().set_offset(data);
             }
             SOUND_A_PORT | SOUND_B_PORT => debug!("Write to sound port[{}]={:02x}", id, data),
-            DEBUG_PORT => debug!("Write to debug port[{}]={:02x}", id, data),
+            WATCHDOG_PORT => debug!("Write to watchdog {:02x}", data),
             _ => warn!("Write to unknown port {}={:02x}", id, data)
         }
     }

@@ -7,122 +7,135 @@ use super::{
         RegPair,
     },
 };
+use cpu::CpuError;
 
-struct CodeIterator<I: Iterator<Item=u8>> {
+trait It : Iterator<Item=Result<Byte, CpuError>> {}
+
+struct CodeIterator<I: Iterator<Item=Result<Byte, CpuError>>> {
     code_iterator: I
 }
 
-impl CodeIterator<std::vec::IntoIter<u8>> {
-    fn new(data: Vec<u8>) -> CodeIterator<std::vec::IntoIter<u8>> {
+impl<I: Iterator<Item=Result<Byte, CpuError>>> CodeIterator<I> {
+    fn new(data: I) -> CodeIterator<I> {
         CodeIterator {
-            code_iterator: data.into_iter(),
+            code_iterator: data,
         }
-    }
-}
-
-impl<I: Iterator<Item=u8>> CodeIterator<I> {
-    fn next_opcode(&mut self) -> Option<Result<Instruction, OpcodeError>> {
-        Some(Ok(match self.code_iterator.next()? {
-            0x00 => Nop,
-            v if (v & 0xcf) == 0x01 => {
-                Lxi(self.cmd_3(v)?.into())
-            }
-            v if (v & 0xef) == 0x02 => Stax((v & 0x10).into()),
-            v if (v & 0xcf) == 0x03 => Inx((v & 0x30).into()),
-            v if (v & 0xc7) == 0x04 => Inr(((v & 0x38) >> 3).into()),
-            v if (v & 0xc7) == 0x05 => Dcr(((v & 0x38) >> 3).into()),
-            v if (v & 0xc7) == 0x06 => Mvi(((v & 0x38) >> 3).into(), self.u8_data()?),
-            0x07 => Rlc,
-            v if (v & 0xcf) == 0x09 => Dad((v & 0x30).into()),
-            0x0a => Ldax(RegPair::BC),
-            v if (v & 0xcf) == 0x0b => Dcx((v & 0x30).into()),
-            0x0f => Rrc,
-            0x17 => Ral,
-            0x1a => Ldax(RegPair::DE),
-            0x1f => Rar,
-            0x20 => Rim,
-            0x27 => Daa,
-            0x22 => Shld(self.u16_data()?),
-            0x2a => Lhld(self.u16_data()?),
-            0x2f => Cma,
-            0x30 => Sim,
-            0x32 => Sta(self.u16_data()?),
-            0x37 => Stc,
-            0x3a => Lda(self.u16_data()?),
-            0x3c => Inr(Reg::A),
-            0x3f => Cmc,
-            0x76 => Hlt,
-            v if v >= 0x40 && v <= 0x7f => Mov(((v - 0x40) >> 3).into(), (v & 0x07).into()),
-            v if v >= 0x80 && v <= 0x87 => Add((v - 0x80).into()),
-            v if v >= 0x88 && v <= 0x8f => Adc((v - 0x88).into()),
-            v if v >= 0x90 && v <= 0x97 => Sub((v - 0x90).into()),
-            v if v >= 0x98 && v <= 0x9f => Sbb((v - 0x98).into()),
-            v if v >= 0xa0 && v <= 0xa7 => Ana((v - 0xa0).into()),
-            v if v >= 0xa8 && v <= 0xaf => Xra((v - 0xa8).into()),
-            v if v >= 0xb0 && v <= 0xb7 => Ora((v - 0xb0).into()),
-            v if v >= 0xb8 && v <= 0xbf => Cmp((v - 0xb8).into()),
-            v if (v & 0xc7) == 0xc0 => R((v & 0x38).into()),
-            v if (v & 0xcf) == 0xc1 => Pop((v & 0x30).into()),
-            v if (v & 0xc7) == 0xc2 => J((v & 0x38).into(), self.u16_data()?),
-            0xc3 => Jump(self.u16_data()?),
-            v if (v & 0xc7) == 0xc4 => C((v & 0x38).into(), self.u16_data()?),
-            v if (v & 0xcf) == 0xc5 => Push((v & 0x30).into()),
-            0xc6 => Adi(self.u8_data()?),
-            v if (v & 0xc7) == 0xc7 => Rst((v & 0x38).into()),
-            0xc9 => Ret,
-            0xcd => Call(self.u16_data()?),
-            0xce => Aci(self.u8_data()?),
-            0xd3 => Out(self.u8_data()?),
-            0xd6 => Sui(self.u8_data()?),
-            0xdb => In(self.u8_data()?),
-            0xde => Sbi(self.u8_data()?),
-            0xe3 => Xthl,
-            0xe6 => Ani(self.u8_data()?),
-            0xe9 => Pchl,
-            0xeb => Xchg,
-            0xee => Xri(self.u8_data()?),
-            0xf3 => Di,
-            0xf6 => Ori(self.u8_data()?),
-            0xf9 => Sphl,
-            0xfb => Ei,
-            0xfe => Cpi(self.u8_data()?),
-            c => {
-                return Some(Err(OpcodeError(format!("0x{:02x} Is not valid opcode!", c))));
-            }
-        }
-        ))
-    }
-
-    fn cmd_3(&mut self, code: u8) -> Option<[u8; 3]> {
-        Some([code, self.code_iterator.next()?, self.code_iterator.next()?])
-    }
-
-    fn u16_data(&mut self) -> Option<u16> {
-        Some((self.code_iterator.next()? as u16) | ((self.code_iterator.next()? as u16) << 8))
-    }
-
-    fn u8_data(&mut self) -> Option<Byte> {
-        self.code_iterator.next().map(|v| v.into())
-    }
-}
-
-impl<I: Iterator<Item=u8>> Iterator for CodeIterator<I> {
-    type Item = Result<Instruction, OpcodeError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.next_opcode()
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct OpcodeError(String);
 
-pub fn disassemble<C: AsRef<[u8]>>(codes: C) -> Result<Vec<Instruction>, OpcodeError> {
+impl Into<String> for OpcodeError {
+    fn into(self) -> String {
+        self.0
+    }
+}
+
+pub fn disassemble<C: AsRef<[u8]>>(codes: C) -> Result<Vec<Instruction>, CpuError> {
     CodeIterator::new(
-        codes.as_ref().iter().cloned().collect()
+        codes.as_ref().iter().cloned().map(|d| Ok(d))
     ).collect()
 }
 
+fn next_code(it: &mut impl Iterator<Item=Result<Byte, CpuError>>) -> Result<Byte, CpuError> {
+    it.next().ok_or(CpuError::NoCode)?
+}
+
+pub fn opcode(it: &mut impl Iterator<Item=Result<Byte, CpuError>>) -> Result<Instruction, CpuError> {
+    Ok(match next_code(it)? {
+        0x00 => Nop,
+        v if (v & 0xcf) == 0x01 => {
+            Lxi(cmd_3(it, v)?.into())
+        }
+        v if (v & 0xef) == 0x02 => Stax((v & 0x10).into()),
+        v if (v & 0xcf) == 0x03 => Inx((v & 0x30).into()),
+        v if (v & 0xc7) == 0x04 => Inr(((v & 0x38) >> 3).into()),
+        v if (v & 0xc7) == 0x05 => Dcr(((v & 0x38) >> 3).into()),
+        v if (v & 0xc7) == 0x06 => Mvi(((v & 0x38) >> 3).into(), u8_data(it)?),
+        0x07 => Rlc,
+        v if (v & 0xcf) == 0x09 => Dad((v & 0x30).into()),
+        0x0a => Ldax(RegPair::BC),
+        v if (v & 0xcf) == 0x0b => Dcx((v & 0x30).into()),
+        0x0f => Rrc,
+        0x17 => Ral,
+        0x1a => Ldax(RegPair::DE),
+        0x1f => Rar,
+        0x20 => Rim,
+        0x27 => Daa,
+        0x22 => Shld(u16_data(it)?),
+        0x2a => Lhld(u16_data(it)?),
+        0x2f => Cma,
+        0x30 => Sim,
+        0x32 => Sta(u16_data(it)?),
+        0x37 => Stc,
+        0x3a => Lda(u16_data(it)?),
+        0x3c => Inr(Reg::A),
+        0x3f => Cmc,
+        0x76 => Hlt,
+        v if v >= 0x40 && v <= 0x7f => Mov((v & 0x07).into(), ((v - 0x40) >> 3).into()),
+        v if v >= 0x80 && v <= 0x87 => Add((v - 0x80).into()),
+        v if v >= 0x88 && v <= 0x8f => Adc((v - 0x88).into()),
+        v if v >= 0x90 && v <= 0x97 => Sub((v - 0x90).into()),
+        v if v >= 0x98 && v <= 0x9f => Sbb((v - 0x98).into()),
+        v if v >= 0xa0 && v <= 0xa7 => Ana((v - 0xa0).into()),
+        v if v >= 0xa8 && v <= 0xaf => Xra((v - 0xa8).into()),
+        v if v >= 0xb0 && v <= 0xb7 => Ora((v - 0xb0).into()),
+        v if v >= 0xb8 && v <= 0xbf => Cmp((v - 0xb8).into()),
+        v if (v & 0xc7) == 0xc0 => R((v & 0x38).into()),
+        v if (v & 0xcf) == 0xc1 => Pop((v & 0x30).into()),
+        v if (v & 0xc7) == 0xc2 => J((v & 0x38).into(), u16_data(it)?),
+        0xc3 => Jump(u16_data(it)?),
+        v if (v & 0xc7) == 0xc4 => C((v & 0x38).into(), u16_data(it)?),
+        v if (v & 0xcf) == 0xc5 => Push((v & 0x30).into()),
+        0xc6 => Adi(u8_data(it)?),
+        v if (v & 0xc7) == 0xc7 => Rst((v & 0x38).into()),
+        0xc9 => Ret,
+        0xcd => Call(u16_data(it)?),
+        0xce => Aci(u8_data(it)?),
+        0xd3 => Out(u8_data(it)?),
+        0xd6 => Sui(u8_data(it)?),
+        0xdb => In(u8_data(it)?),
+        0xde => Sbi(u8_data(it)?),
+        0xe3 => Xthl,
+        0xe6 => Ani(u8_data(it)?),
+        0xe9 => Pchl,
+        0xeb => Xchg,
+        0xee => Xri(u8_data(it)?),
+        0xf3 => Di,
+        0xf6 => Ori(u8_data(it)?),
+        0xf9 => Sphl,
+        0xfb => Ei,
+        0xfe => Cpi(u8_data(it)?),
+        c => {
+            return Err(CpuError::InvalidCode(format!("0x{:02x} Is not valid opcode!", c)));
+        }
+    }
+    )
+}
+
+fn cmd_3(it: &mut impl Iterator<Item=Result<Byte, CpuError>>, code: u8) -> Result<[u8; 3], CpuError> {
+    Ok([code, next_code(it)?, next_code(it)?])
+}
+
+fn u16_data(it: &mut impl Iterator<Item=Result<Byte, CpuError>>) -> Result<Word, CpuError> {
+    Ok((next_code(it)? as u16) | ((next_code(it)? as u16) << 8))
+}
+
+fn u8_data(it: &mut impl Iterator<Item=Result<Byte, CpuError>>) -> Result<Byte, CpuError> {
+    next_code(it).map(|v| v.into())
+}
+
+impl<I: Iterator<Item=Result<Byte, CpuError>>> Iterator for CodeIterator<I> {
+    type Item = Result<Instruction, CpuError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match opcode(&mut self.code_iterator) {
+            Err(CpuError::NoCode) => None,
+            v => Some(v)
+        }
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -415,7 +428,7 @@ mod test {
         let d = disassemble(&codes);
 
         assert!(d.is_err(), "But it is {:?}", d);
-        assert_eq!(OpcodeError(format!("0x{:02x} Is not valid opcode!", opcode)),
+        assert_eq!(CpuError::InvalidCode(format!("0x{:02x} Is not valid opcode!", opcode)),
                    d.unwrap_err())
     }
 }

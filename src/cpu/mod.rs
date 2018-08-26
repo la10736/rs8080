@@ -1,17 +1,27 @@
 use ::std::mem::swap;
 use self::Flag::*;
 use super::{
-    Address, asm::{BytePair, Instruction, Instruction::*,
-                   Reg, RegPair, RegPairValue, CondFlag, IrqAddr},
-    Byte,
+    Address, Byte, Word,
+    asm::{BytePair, Instruction, Instruction::*,
+          Reg, RegPair, RegPairValue, CondFlag, IrqAddr},
+    registers::*,
+    disassemble::{opcode, OpcodeError},
+    io_bus::{OutputBus, InputBus},
 };
-use io_bus::{OutputBus, InputBus};
+use std::fmt::Formatter;
+use std::fmt::Debug;
+
+type Periods = u16;
 
 #[cfg(test)]
 mod test;
 
-use ::registers::*;
-use Word;
+use std::result::Result as StdResult;
+use std::fmt;
+
+pub type Result<V> = StdResult<V, CpuError>;
+
+pub const DUMP_MEMORY_COLUMNS: usize = 32;
 
 impl Into<Address> for IrqAddr {
     fn into(self) -> Address {
@@ -40,7 +50,7 @@ impl RegByte {
     }
 }
 
-#[derive(Default, Clone, Eq, PartialEq, Debug)]
+#[derive(Default, Clone, Eq, PartialEq)]
 struct Flags(Byte);
 
 impl Flags {
@@ -86,6 +96,12 @@ impl Flags {
 
     fn clear_all(&mut self) {
         self.0 = 0x0
+    }
+}
+
+impl Debug for Flags {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "0x{:02x}", self.0)
     }
 }
 
@@ -182,41 +198,82 @@ impl Default for PlainMemory {
     }
 }
 
-pub trait Mmu {
-    fn read_byte(&self, address: Address) -> u8;
+#[derive(PartialEq)]
+pub enum MemoryError {
+    Read(Address),
+    Write(Address, Byte),
+    Ref(Address),
+}
 
-    fn write_byte(&mut self, address: Address, val: u8);
-
-    fn ref_mut(&mut self, address: Address) -> &mut u8;
-
-    fn read_word(&self, address: Address) -> u16 {
-        ((self.read_byte(address) as u16) << 8) | (self.read_byte(address + 1) as u16)
-    }
-
-    fn write_word(&mut self, address: Address, val: Word) {
-        self.write_byte(address, (val >> 8) as Byte);
-        self.write_byte(address + 1, (val & 0xff) as Byte);
-    }
-
-    fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) {
-        data.as_ref().iter().enumerate().for_each(
-            |(off, v)|
-                self.write_byte(address + (off as Address), *v)
-        )
+impl Debug for MemoryError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        use self::MemoryError::*;
+        match self {
+            Write(a, v) => write!(f, "Write(0x{:04x}, 0x{:02x})", a, v),
+            Read(a) => write!(f, "Read(0x{:04x})", a),
+            Ref(a) => write!(f, "Ref(0x{:04x})", a),
+        }
     }
 }
 
+pub trait Mmu {
+    fn read_byte(&self, address: Address) -> Result<Byte>;
+
+    fn write_byte(&mut self, address: Address, val: u8) -> Result<()>;
+
+    fn dump(&self) -> String;
+
+    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte>;
+
+    fn read_word(&self, address: Address) -> Result<Word> {
+        Ok(((self.read_byte(address)? as u16) << 8) | (self.read_byte(address + 1)? as u16))
+    }
+
+    fn write_word(&mut self, address: Address, val: Word) -> Result<()> {
+        self.write_byte(address, (val >> 8) as Byte)?;
+        self.write_byte(address + 1, (val & 0xff) as Byte)?;
+        Ok(())
+    }
+
+    fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) -> Result<()> {
+        data.as_ref().iter().enumerate().map(
+            |(off, v)|
+                self.write_byte(address + (off as Address), *v)
+        ).collect()
+    }
+}
+
+fn str_bytes(data: &[Byte]) -> String {
+    data.iter().map(|v| format!("{:02x}", v)).collect::<Vec<_>>().join(" ")
+}
+
+fn str_memory_row(data: &[Byte], address: usize) -> String {
+    format!("0x{:04x} {}", address, str_bytes(data))
+}
+
+pub fn str_memory(data: &[Byte], offset: usize, columns: usize) -> String {
+    data.chunks(columns)
+        .into_iter()
+        .enumerate()
+        .map(|(pos, d)| str_memory_row(d, offset + pos * columns))
+        .collect::<Vec<_>>().join("\n")
+}
+
 impl Mmu for PlainMemory {
-    fn read_byte(&self, address: Address) -> Byte {
-        self.bank[address as usize]
+    fn read_byte(&self, address: Address) -> Result<Byte> {
+        Ok(self.bank[address as usize])
+    }
+    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
+        self.bank[address as usize] = val;
+        Ok(())
     }
 
-    fn write_byte(&mut self, address: Address, val: Byte) {
-        self.bank[address as usize] = val
+    fn dump(&self) -> String {
+        str_memory(&self.bank, 0x0, DUMP_MEMORY_COLUMNS)
     }
 
-    fn ref_mut(&mut self, address: Address) -> &mut u8 {
-        &mut self.bank[address as usize]
+    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte> {
+        Ok(&mut self.bank[address as usize])
     }
 }
 
@@ -242,7 +299,7 @@ pub enum IrqCmd {
     Irq5,
     Irq6,
     Irq7,
-    RawCmd(Instruction)
+    RawCmd(Instruction),
 }
 
 impl Into<Instruction> for IrqCmd {
@@ -275,7 +332,7 @@ pub struct Cpu<M: Mmu, O: OutputBus, I: InputBus> {
 }
 
 impl<M, O, I>
-    Default for Cpu<M, O, I>
+Default for Cpu<M, O, I>
     where M: Mmu + Default,
           O: OutputBus + Default,
           I: InputBus + Default
@@ -292,6 +349,32 @@ impl<M, O, I>
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum CpuError {
+    InvalidCode(String),
+    Memory(MemoryError),
+    NotRunning,
+    NoCode,
+}
+
+impl CpuError {
+    pub fn memory_read<V>(address: Address) -> Result<V> {
+        Err(CpuError::Memory(MemoryError::Read(address)))
+    }
+    pub fn memory_write<V>(address: Address, val: Byte) -> Result<V> {
+        Err(CpuError::Memory(MemoryError::Write(address, val)))
+    }
+    pub fn memory_ref<V>(address: Address) -> Result<V> {
+        Err(CpuError::Memory(MemoryError::Ref(address)))
+    }
+}
+
+impl From<OpcodeError> for CpuError {
+    fn from(op: OpcodeError) -> Self {
+        CpuError::InvalidCode(op.into())
+    }
+}
+
 /// External interface
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     pub fn new(mmu: M, output: O, input: I) -> Self {
@@ -305,21 +388,27 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         }
     }
 
-    pub fn exec(&mut self, instruction: Instruction) {
+    /// Load instruction at pc and run it
+    pub fn run(&mut self) -> Result<Periods> {
+        let op = opcode(self)?;
+        debug!("State: {:?} | Exec: {}", self.state, op);
+        self.exec(op)
+    }
+
+    pub fn exec(&mut self, instruction: Instruction) -> Result<Periods> {
         if !self.is_running() {
-            return;
+            return Err(CpuError::NotRunning);
         }
-        self.state.pc.overflow_add(instruction.length());
         self.apply(instruction)
     }
 
-    pub fn apply(&mut self, instruction: Instruction) -> () {
+    pub fn apply(&mut self, instruction: Instruction) -> Result<Periods> {
         match instruction {
             Cmc => {
-                self.cmc()
+                Ok(self.cmc())
             }
             Stc => {
-                self.stc()
+                Ok(self.stc())
             }
             Inr(r) => {
                 self.inr(r)
@@ -328,19 +417,19 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 self.dcr(r)
             }
             Cma => {
-                self.cma()
+                Ok(self.cma())
             }
             Daa => {
                 self.daa()
             }
             Nop => {
-                self.nop()
+                Ok(self.nop())
             }
             Mov(f, t) => {
                 self.mov(f, t)
             }
             Stax(rp) if rp.is_basic() => {
-                self.stax(rp)
+                Ok(self.stax(rp))
             }
             Ldax(rp) if rp.is_basic() => {
                 self.ldax(rp)
@@ -370,73 +459,73 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 self.cmp(r)
             }
             Rlc => {
-                self.rlc()
+                Ok(self.rlc())
             }
             Rrc => {
-                self.rrc()
+                Ok(self.rrc())
             }
             Ral => {
-                self.ral()
+                Ok(self.ral())
             }
             Rar => {
-                self.rar()
+                Ok(self.rar())
             }
             Push(bp) => {
-                self.push(bp)
+                Ok(self.push(bp))
             }
             Pop(bp) => {
-                self.pop(bp)
+                Ok(self.pop(bp))
             }
             Dad(rp) => {
-                self.dad(rp)
+                Ok(self.dad(rp))
             }
             Inx(rp) => {
-                self.inx(rp)
+                Ok(self.inx(rp))
             }
             Dcx(rp) => {
-                self.dcx(rp)
+                Ok(self.dcx(rp))
             }
             Xchg => {
-                self.xchg()
+                Ok(self.xchg())
             }
             Xthl => {
                 self.xthl()
             }
             Sphl => {
-                self.sphl()
+                Ok(self.sphl())
             }
             Lxi(rp) => {
-                self.lxi(rp)
+                Ok(self.lxi(rp))
             }
             Mvi(r, val) => {
-                self.mvi(r, val)
+                Ok(self.mvi(r, val))
             }
             Adi(val) => {
-                self.adi(val)
+                Ok(self.adi(val))
             }
             Aci(val) => {
-                self.aci(val)
+                Ok(self.aci(val))
             }
             Sui(val) => {
-                self.sui(val)
+                Ok(self.sui(val))
             }
             Sbi(val) => {
-                self.sbi(val)
+                Ok(self.sbi(val))
             }
             Ani(val) => {
-                self.ani(val)
+                Ok(self.ani(val))
             }
             Xri(val) => {
-                self.xri(val)
+                Ok(self.xri(val))
             }
             Ori(val) => {
-                self.ori(val)
+                Ok(self.ori(val))
             }
             Cpi(val) => {
-                self.cpi(val)
+                Ok(self.cpi(val))
             }
             Sta(address) => {
-                self.sta(address)
+                Ok(self.sta(address))
             }
             Lda(address) => {
                 self.lda(address)
@@ -448,46 +537,46 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 self.lhld(address)
             }
             Pchl => {
-                self.pchl()
+                Ok(self.pchl())
             }
             Jump(address) => {
-                self.jump(address)
+                Ok(self.jump(address))
             }
             J(cf, address) => {
                 let (flag, expected) = cf.into();
-                self.jump_conditionals(address, flag, expected)
+                Ok(self.jump_conditionals(address, flag, expected))
             }
             Call(address) => {
-                self.call(address)
+                Ok(self.call(address))
             }
             C(cf, address) => {
                 let (flag, expected) = cf.into();
-                self.call_conditionals(address, flag, expected)
+                Ok(self.call_conditionals(address, flag, expected))
             }
             Ret => {
                 self.ret()
             }
             R(cf) => {
                 let (flag, expected) = cf.into();
-                self.ret_conditionals(flag, expected)
+                Ok(self.ret_conditionals(flag, expected))
             }
             Rst(irq) => {
-                self.rst(irq)
+                Ok(self.rst(irq))
             }
             Ei => {
-                self.ei()
+                Ok(self.ei())
             }
             Di => {
-                self.di()
+                Ok(self.di())
             }
             In(id) => {
-                self.input(id)
+                Ok(self.input(id))
             }
             Out(id) => {
-                self.output(id)
+                Ok(self.output(id))
             }
             Hlt => {
-                self.halt()
+                Ok(self.halt())
             }
             Stax(_) | Ldax(_) | Rim | Sim =>
                 unimplemented!("Instruction {:?} should not exist!", instruction)
@@ -500,6 +589,14 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         self.apply(cmd.into());
     }
 
+    pub fn pc(&self) -> Address {
+        self.state.pc.into()
+    }
+
+    pub fn sp(&self) -> Address {
+        self.state.sp.into()
+    }
+
     pub fn is_running(&self) -> bool {
         self.run_state == CpuState::Running
     }
@@ -509,42 +606,82 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 }
 
+/// Dump interface
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+    pub fn dump_state(&self) -> String {
+        format!("{:?}", self.state)
+    }
+
+    pub fn dump_memory(&self) -> String {
+        self.mmu.dump()
+    }
+
+    pub fn dump_stack(&self) -> String {
+        let address = self.state.sp.val;
+        format!("0x{:04x} => ", address) + &match (address..0x2400)
+            .map(|a| self.mmu.read_byte(a))
+            .map( |e| e.map(|v| format!("{:02x}", v)))
+            .collect::<Result<Vec<_>>>() {
+            Ok(vals) => vals.join(" "),
+            Err(e) => format!("Invalid stack address 0x{:04x}", address)
+        }
+    }
+
+    pub fn dump_opcodes(&self) -> String {
+        format!("{}", "TODO")
+    }
+}
+
+impl<M: Mmu, O: OutputBus, I: InputBus> Iterator for Cpu<M, O, I> {
+    type Item = Result<Byte>;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        let data = self.mmu.read_byte(self.state.pc.val);
+        self.state.pc.overflow_add(0x01);
+        Some(data)
+    }
+}
+
 /// Utilities
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-
-    fn reg(&self, r: self::Reg) -> RegByte {
+    fn reg(&self, r: self::Reg) -> Result<RegByte> {
         use self::Reg::*;
-        match r {
-            A => self.state.a,
-            B => self.state.b,
-            C => self.state.c,
-            D => self.state.d,
-            E => self.state.e,
-            H => self.state.h,
-            L => self.state.l,
-            M => self.mmu.read_byte(self.hl().val).into(),
-        }
+        Ok(
+            match r {
+                A => self.state.a,
+                B => self.state.b,
+                C => self.state.c,
+                D => self.state.d,
+                E => self.state.e,
+                H => self.state.h,
+                L => self.state.l,
+                M => self.mmu.read_byte(self.hl().val)?.into(),
+            }
+        )
     }
 
-    fn reg_set<R: Into<RegByte>>(&mut self, r: self::Reg, val: R) {
+    fn reg_set<R: Into<RegByte>>(&mut self, r: self::Reg, val: R) -> Result<()> {
         use self::Reg::*;
         let reg = val.into();
-        match r {
-            A => self.state.a = reg,
-            B => self.state.b = reg,
-            C => self.state.c = reg,
-            D => self.state.d = reg,
-            E => self.state.e = reg,
-            H => self.state.h = reg,
-            L => self.state.l = reg,
-            M => self.set_m(reg.val),
-        }
+        Ok(
+            match r {
+                A => self.state.a = reg,
+                B => self.state.b = reg,
+                C => self.state.c = reg,
+                D => self.state.d = reg,
+                E => self.state.e = reg,
+                H => self.state.h = reg,
+                L => self.state.l = reg,
+                M => self.set_m(reg.val)?,
+            }
+        )
     }
 
-    fn reg_apply<F: FnMut(&mut RegByte)>(&mut self, r: self::Reg, mut f: F) {
-        let mut val = self.reg(r);
+    fn reg_apply<F: FnMut(&mut RegByte)>(&mut self, r: self::Reg, mut f: F) -> Result<()> {
+        let mut val = self.reg(r)?;
         f(&mut val);
         self.reg_set(r, val);
+        Ok(())
     }
 
     fn reg_address(&self, r: self::RegPair) -> RegAddress {
@@ -613,33 +750,33 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         self.state.l = l;
     }
 
-    fn get_m(&self) -> RegByte {
+    fn get_m(&self) -> Result<RegByte> {
         let address = self.hl().val;
-        self.mmu.read_byte(address).into()
+        self.mmu.read_byte(address).map(|v| v.into())
     }
 
-    fn set_m<W: Into<Byte>>(&mut self, val: W) {
+    fn set_m<W: Into<Byte>>(&mut self, val: W) -> Result<()> {
         let address = self.hl().val;
-        self.mmu.write_byte(address, val.into());
+        self.mmu.write_byte(address, val.into())
     }
 
-    fn fix_static_flags(&mut self, r: Reg) {
-        self.reg(r).clone().update_flags(&mut self.state.flags)
+    fn fix_static_flags(&mut self, r: Reg) -> Result<()> {
+        self.reg(r).map(|register| register.update_flags(&mut self.state.flags))
     }
 
-    fn push_val(&mut self, val: Byte) {
+    fn push_val(&mut self, val: Byte) -> Result<()> {
         self.state.sp.overflow_sub(1);
-        self.mmu.write_byte(self.state.sp.into(), val);
+        self.mmu.write_byte(self.state.sp.into(), val)
     }
 
-    fn push_addr(&mut self, address: Address) {
-        self.push_val((address & 0xff) as Byte);
-        self.push_val(((address >> 8) & 0xff) as Byte);
+    fn push_addr(&mut self, address: Address) -> Result<()> {
+        self.push_val((address & 0xff) as Byte)?;
+        self.push_val(((address >> 8) & 0xff) as Byte)
     }
 
-    fn push_reg(&mut self, r: Reg) {
-        let val = self.reg(r).val;
-        self.push_val(val);
+    fn push_reg(&mut self, r: Reg) -> Result<()> {
+        let val = self.reg(r)?.val;
+        self.push_val(val)
     }
 
     fn push_flags(&mut self) {
@@ -647,47 +784,50 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         self.push_val(val);
     }
 
-    fn pop_val(&mut self) -> Byte {
-        let val = self.mmu.read_byte(self.state.sp.into());
+    fn pop_val(&mut self) -> Result<Byte> {
+        let val = self.mmu.read_byte(self.state.sp.into())?;
         self.state.sp.overflow_add(1);
-        val
+        Ok(val)
     }
 
-    fn pop_addr(&mut self) -> Address {
-        let (hi, lo) = (self.pop_val(), self.pop_val());
-        (hi as Address) << 8 | (lo as Address)
+    fn pop_addr(&mut self) -> Result<Address> {
+        let (hi, lo) = (self.pop_val()?, self.pop_val()?);
+        Ok((hi as Address) << 8 | (lo as Address))
     }
 
-    fn pop_reg(&mut self, r: Reg) {
-        let val = self.pop_val();
-        self.reg_set(r, val);
+    fn pop_reg(&mut self, r: Reg) -> Result<()> {
+        let val = self.pop_val()?;
+        self.reg_set(r, val)
     }
 
-    fn pop_flags(&mut self) {
-        let val = self.pop_val();
+    fn pop_flags(&mut self) -> Result<()> {
+        let val = self.pop_val()?;
         self.state.unpack_flags(val);
+        Ok(())
     }
 }
 
 /// Carry bit Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn nop(&mut self) {}
+    fn nop(&mut self) -> Periods { 4 }
 }
 
 /// Carry bit Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn cmc(&mut self) {
+    fn cmc(&mut self) -> Periods {
         self.state.flags.toggle(Flag::Carry);
+        4
     }
-    fn stc(&mut self) {
+    fn stc(&mut self) -> Periods {
         self.state.flags.set(Flag::Carry);
+        4
     }
 }
 
 
 /// Immediate Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn lxi(&mut self, v: self::RegPairValue) {
+    fn lxi(&mut self, v: self::RegPairValue) -> Periods {
         use self::RegPairValue::*;
         match v {
             BC(b, c) => {
@@ -703,56 +843,75 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 self.state.set_sp(addr);
             }
         }
+        10
     }
 
-    fn mvi(&mut self, r: Reg, val: Byte) {
+    fn mvi(&mut self, r: Reg, val: Byte) -> Periods {
         self.reg_set(r, val);
+        match r {
+            Reg::M => 10,
+            _ => 7
+        }
     }
 
-    fn adi(&mut self, val: Byte) {
+    fn adi(&mut self, val: Byte) -> Periods {
         self.accumulator_add(val);
+        7
     }
 
-    fn aci(&mut self, val: Byte) {
+    fn aci(&mut self, val: Byte) -> Periods {
         let other = if self.carry() { val + 1 } else { val };
         self.accumulator_add(other);
+        7
     }
 
-    fn sui(&mut self, val: Byte) {
+    fn sui(&mut self, val: Byte) -> Periods {
         self.accumulator_sub(val);
+        7
     }
 
-    fn sbi(&mut self, val: Byte) {
+    fn sbi(&mut self, val: Byte) -> Periods {
         let other = if self.carry() { val + 1 } else { val };
         self.accumulator_sub(other);
+        7
     }
 
-    fn cpi(&mut self, val: Byte) {
+    fn cpi(&mut self, val: Byte) -> Periods {
         self.compare(val.into());
+        7
     }
 }
 
 /// Single Register Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn cma(&mut self) {
+    fn cma(&mut self) -> Periods {
         self.reg_apply(self::Reg::A, |r| r.one_complement());
+        4
     }
 
-    fn inr(&mut self, reg: self::Reg) {
+    fn inr(&mut self, reg: self::Reg) -> Result<Periods> {
         self.reg_apply(reg, |r| { r.increment(); });
         self.fix_static_flags(reg);
-        let auxcarry = self.reg(reg).low() == 0x00;
+        let auxcarry = self.reg(reg)?.low() == 0x00;
         self.state.flags.val(AuxCarry, auxcarry);
+        Ok(match reg {
+            Reg::M => 10,
+            _ => 5
+        })
     }
 
-    fn dcr(&mut self, reg: self::Reg) {
+    fn dcr(&mut self, reg: self::Reg) -> Result<Periods> {
         self.reg_apply(reg, |r| { r.decrement(); });
         self.fix_static_flags(reg);
-        let auxcarry = self.reg(reg).low() == 0x0f;
+        let auxcarry = self.reg(reg)?.low() == 0x0f;
         self.state.flags.val(AuxCarry, auxcarry);
+        Ok(match reg {
+            Reg::M => 10,
+            _ => 5
+        })
     }
 
-    fn daa(&mut self) {
+    fn daa(&mut self) -> Result<Periods> {
         let low = self.state.a.low();
         let new_aux = low > 9;
         if new_aux || self.state.flags.get(AuxCarry) {
@@ -767,24 +926,31 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         }
         self.set_carry_state(new_carry);
         self.fix_static_flags(Reg::A);
+        Ok(4)
     }
 }
 
 /// Data transfer Instruction
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn mov(&mut self, f: Reg, t: Reg) {
-        let orig = self.reg(f);
-        self.reg_apply(t, |dest| { *dest = orig; })
+    fn mov(&mut self, f: Reg, t: Reg) -> Result<Periods> {
+        let orig = self.reg(f)?;
+        self.reg_apply(t, |dest| { *dest = orig; });
+        Ok(match (f, t) {
+            (Reg::M, _) | (_, Reg::M) => 7,
+            _ => 5
+        })
     }
 
-    fn stax(&mut self, rp: RegPair) {
+    fn stax(&mut self, rp: RegPair) -> Periods {
         let address = self.address(rp);
         self.mmu.write_byte(address, self.state.a.into());
+        7
     }
 
-    fn ldax(&mut self, rp: RegPair) {
+    fn ldax(&mut self, rp: RegPair) -> Result<Periods> {
         let address = self.address(rp);
-        self.state.a = self.mmu.read_byte(address).into();
+        self.state.a = self.mmu.read_byte(address)?.into();
+        Ok(7)
     }
 }
 
@@ -817,12 +983,19 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
 /// Accumulator
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn accumulator_add(&mut self, other: u8) -> () {
+    fn accumulator_periods(&self, r: Reg) -> Result<Periods> {
+        Ok(match r {
+            Reg::M => 7,
+            _ => 4
+        })
+    }
+
+    fn accumulator_add(&mut self, other: u8) {
         let auxcarry = (self.state.a.low() + (other & 0x0f)) > 0x0f;
         let carry = self.state.a.overflow_add(other);
         self.set_carry_state(carry);
         self.set_aux_carry_state(auxcarry);
-        self.fix_static_flags(Reg::A)
+        self.fix_static_flags(Reg::A).unwrap()
     }
 
     fn accumulator_sub(&mut self, other: u8) -> () {
@@ -830,56 +1003,66 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         let carry = self.state.a.overflow_sub(other);
         self.set_carry_state(carry);
         self.set_aux_carry_state(auxcarry);
-        self.fix_static_flags(Reg::A)
+        self.fix_static_flags(Reg::A).unwrap()
     }
 
-    fn add(&mut self, r: Reg) {
-        let other = self.reg(r).val;
-        self.accumulator_add(other)
+    fn add(&mut self, r: Reg) -> Result<Periods> {
+        let other = self.reg(r)?.val;
+        self.accumulator_add(other);
+        self.accumulator_periods(r)
     }
 
-    fn adc(&mut self, r: Reg) {
-        let v = self.reg(r).val;
+    fn adc(&mut self, r: Reg) -> Result<Periods> {
+        let v = self.reg(r)?.val;
         let other = if self.carry() { v + 1 } else { v };
         self.accumulator_add(other);
+        self.accumulator_periods(r)
     }
 
-    fn sub(&mut self, r: Reg) {
-        let other = self.reg(r).val;
-        self.accumulator_sub(other)
+    fn sub(&mut self, r: Reg) -> Result<Periods> {
+        let other = self.reg(r)?.val;
+        self.accumulator_sub(other);
+        self.accumulator_periods(r)
     }
 
-    fn sbb(&mut self, r: Reg) {
-        let v = self.reg(r).val;
+    fn sbb(&mut self, r: Reg) -> Result<Periods> {
+        let v = self.reg(r)?.val;
         let other = if self.carry() { v + 1 } else { v };
-        self.accumulator_sub(other)
+        self.accumulator_sub(other);
+        self.accumulator_periods(r)
     }
 
-    fn ana(&mut self, r: Reg) {
-        let other = self.reg(r).val;
+    fn ana(&mut self, r: Reg) -> Result<Periods> {
+        let other = self.reg(r)?.val;
         self.accumulator_and(other);
+        self.accumulator_periods(r)
     }
 
-    fn xra(&mut self, r: Reg) {
-        let other = self.reg(r).val;
+    fn xra(&mut self, r: Reg) -> Result<Periods> {
+        let other = self.reg(r)?.val;
         self.accumulator_xor(other);
+        self.accumulator_periods(r)
     }
 
-    fn ora(&mut self, r: Reg) {
-        let other = self.reg(r).val;
+    fn ora(&mut self, r: Reg) -> Result<Periods> {
+        let other = self.reg(r)?.val;
         self.accumulator_or(other);
+        self.accumulator_periods(r)
     }
 
-    fn ani(&mut self, other: Byte) {
+    fn ani(&mut self, other: Byte) -> Periods {
         self.accumulator_and(other);
+        7
     }
 
-    fn xri(&mut self, other: Byte) {
+    fn xri(&mut self, other: Byte) -> Periods {
         self.accumulator_xor(other);
+        7
     }
 
-    fn ori(&mut self, other: Byte) {
+    fn ori(&mut self, other: Byte) -> Periods {
         self.accumulator_or(other);
+        7
     }
 
     fn accumulator_and(&mut self, other: u8) {
@@ -901,12 +1084,13 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         self.aux_carry_clear();
     }
 
-    fn cmp(&mut self, r: Reg) {
-        let other = self.reg(r);
-        self.compare(other)
+    fn cmp(&mut self, r: Reg) -> Result<Periods> {
+        let other = self.reg(r)?;
+        self.compare(other);
+        Ok(7)
     }
 
-    fn compare(&mut self, other: RegByte) -> () {
+    fn compare(&mut self, other: RegByte) {
         let old = self.state.a;
         let inverse = old.sign_bit() != other.sign_bit();
         self.accumulator_sub(other.into());
@@ -922,21 +1106,25 @@ const LEFT_BIT: u8 = 7;
 
 /// Rotate
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn rlc(&mut self) {
+    fn rlc(&mut self) -> Periods {
         let carry = self.state.a.rotate_left();
         self.set_carry_state(carry);
+        4
     }
-    fn rrc(&mut self) {
+    fn rrc(&mut self) -> Periods {
         let carry = self.state.a.rotate_right();
         self.set_carry_state(carry);
+        4
     }
-    fn ral(&mut self) {
+    fn ral(&mut self) -> Periods {
         self.state.a.rotate_left();
         self.swap_carry_bit(RIGHT_BIT);
+        4
     }
-    fn rar(&mut self) {
+    fn rar(&mut self) -> Periods {
         self.state.a.rotate_right();
         self.swap_carry_bit(LEFT_BIT);
+        4
     }
 
     fn swap_carry_bit(&mut self, bit: u8) {
@@ -953,7 +1141,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
 /// Register Pair Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn push(&mut self, bp: BytePair) {
+    fn push(&mut self, bp: BytePair) -> Periods {
         use self::BytePair::*;
         match bp {
             BC => {
@@ -972,10 +1160,11 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 self.push_reg(Reg::A);
                 self.push_flags();
             }
-        }
+        };
+        11
     }
 
-    fn pop(&mut self, bp: BytePair) {
+    fn pop(&mut self, bp: BytePair) -> Periods {
         use self::BytePair::*;
         match bp {
             BC => {
@@ -994,10 +1183,11 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 self.pop_flags();
                 self.pop_reg(Reg::A);
             }
-        }
+        };
+        10
     }
 
-    fn dad(&mut self, rp: RegPair) {
+    fn dad(&mut self, rp: RegPair) -> Periods {
         let delta = match rp {
             RegPair::BC => self.bc(),
             RegPair::DE => self.de(),
@@ -1008,52 +1198,62 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         let carry = a.overflow_add(delta);
         self.set_hl(a);
         self.set_carry_state(carry);
+        10
     }
 
-    fn inx(&mut self, rp: RegPair) {
+    fn inx(&mut self, rp: RegPair) -> Periods {
         self.reg_address_apply(rp, |a| { a.overflow_add(1); });
+        5
     }
 
-    fn dcx(&mut self, rp: RegPair) {
+    fn dcx(&mut self, rp: RegPair) -> Periods {
         self.reg_address_apply(rp, |a| { a.overflow_sub(1); });
+        5
     }
 
-    fn xchg(&mut self) {
+    fn xchg(&mut self) -> Periods {
         swap(&mut self.state.d, &mut self.state.h);
         swap(&mut self.state.e, &mut self.state.l);
+        4
     }
 
-    fn xthl(&mut self) {
+    fn xthl(&mut self) -> Result<Periods> {
         let sp = self.state.sp.into();
-        swap(self.mmu.ref_mut(sp), &mut self.state.h.val);
-        swap(self.mmu.ref_mut(sp + 1), &mut self.state.l.val);
+        swap(self.mmu.ref_mut(sp)?, &mut self.state.l.val);
+        swap(self.mmu.ref_mut(sp + 1)?, &mut self.state.h.val);
+        Ok(18)
     }
 
-    fn sphl(&mut self) {
+    fn sphl(&mut self) -> Periods {
         self.state.sp = self.hl().into();
+        5
     }
 }
 
 /// Direct Addressing Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn sta(&mut self, address: Address) {
+    fn sta(&mut self, address: Address) -> Periods {
         let value = self.state.a.val;
         self.mmu.write_byte(address, value);
+        13
     }
 
-    fn lda(&mut self, address: Address) {
-        self.state.a = self.mmu.read_byte(address).into();
+    fn lda(&mut self, address: Address) -> Result<Periods> {
+        self.state.a = self.mmu.read_byte(address)?.into();
+        Ok(13)
     }
 
-    fn shld(&mut self, address: Address) {
+    fn shld(&mut self, address: Address) -> Result<Periods> {
         let hl = self.hl().into();
         let bus = &mut self.mmu;
-        bus.write_word(address, hl);
+        bus.write_word(address, hl)?;
+        Ok(16)
     }
 
-    fn lhld(&mut self, address: Address) {
-        self.state.h = self.mmu.read_byte(address).into();
-        self.state.l = self.mmu.read_byte(address + 1).into();
+    fn lhld(&mut self, address: Address) -> Result<Periods> {
+        self.state.h = self.mmu.read_byte(address)?.into();
+        self.state.l = self.mmu.read_byte(address + 1)?.into();
+        Ok(16)
     }
 }
 
@@ -1075,74 +1275,90 @@ impl Into<(Flag, bool)> for CondFlag {
 
 /// Jump Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn pchl(&mut self) {
+    fn pchl(&mut self) -> Periods {
         self.state.pc = self.hl();
+        5
     }
 
-    fn jump(&mut self, address: Address) {
+    fn jump(&mut self, address: Address) -> Periods {
         self.state.pc = address.into();
+        10
     }
 
-    fn jump_conditionals(&mut self, address: Address, flag: Flag, should_be: bool) {
+    fn jump_conditionals(&mut self, address: Address, flag: Flag, should_be: bool) -> Periods {
         if self.state.flags.get(flag) == should_be {
             self.jump(address);
         }
+        10
     }
 
-    fn call(&mut self, address: Address) {
+    fn call(&mut self, address: Address) -> Periods {
         let addr = self.state.pc.into();
         self.push_addr(addr);
         self.jump(address);
+        17
     }
 
-    fn call_conditionals(&mut self, address: Address, flag: Flag, should_be: bool) {
+    fn call_conditionals(&mut self, address: Address, flag: Flag, should_be: bool) -> Periods {
         if self.state.flags.get(flag) == should_be {
-            self.call(address);
+            self.call(address)
+        } else {
+            11
         }
     }
 
-    fn ret(&mut self) {
-        let addr = self.pop_addr();
+    fn ret(&mut self) -> Result<Periods> {
+        let addr = self.pop_addr()?;
         self.jump(addr);
+        Ok(10)
     }
 
-    fn ret_conditionals(&mut self, flag: Flag, should_be: bool) {
+    fn ret_conditionals(&mut self, flag: Flag, should_be: bool) -> Periods {
         if self.state.flags.get(flag) == should_be {
             self.ret();
+            11
+        } else {
+            5
         }
     }
 
-    fn rst(&mut self, irq: IrqAddr) {
-        self.call(irq.into())
+    fn rst(&mut self, irq: IrqAddr) -> Periods {
+        self.call(irq.into());
+        11
     }
 }
 
 /// Interrupts
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn ei(&mut self) {
+    fn ei(&mut self) -> Periods {
         self.interrupt_enabled = true;
+        4
     }
 
-    fn di(&mut self) {
+    fn di(&mut self) -> Periods {
         self.interrupt_enabled = false;
+        4
     }
 }
 
 /// IO
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn input(&mut self, id: Byte) {
+    fn input(&mut self, id: Byte) -> Periods {
         let val = self.input.read(id);
         self.state.set_a(val);
+        10
     }
 
-    fn output(&mut self, id: Byte) {
+    fn output(&mut self, id: Byte) -> Periods {
         self.output.send(id, self.state.a.val);
+        10
     }
 }
 
 /// Halt
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn halt(&mut self) {
+    fn halt(&mut self) -> Periods {
         self.run_state = CpuState::Stopped;
+        7
     }
 }

@@ -1,14 +1,23 @@
 use Byte;
 use Address;
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Error;
 
-#[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Default, Clone, Copy, Eq, PartialEq)]
 pub struct RegByte {
     pub val: Byte
 }
 
-#[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Default, Clone, Copy, Eq, PartialEq)]
 pub struct RegAddress {
     pub val: Address,
+}
+
+impl Debug for RegByte {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "0x{:02x}", self.val)
+    }
 }
 
 impl RegByte {
@@ -91,6 +100,12 @@ impl From<Byte> for RegByte {
 impl Into<Byte> for RegByte {
     fn into(self) -> Byte {
         self.val
+    }
+}
+
+impl Debug for RegAddress {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "0x{:04x}", self.val)
     }
 }
 
