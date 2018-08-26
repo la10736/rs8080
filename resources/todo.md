@@ -1,7 +1,7 @@
 # TODO
 
 - [X] Dump Stack
-- [ ] Register and dump last opcodes
+- [X] Register and dump last opcodes
 - [ ] Find bug that mess stack
 - [ ] Try Release Performance
 - [ ] Some test about timing (clocks) and error Propagation

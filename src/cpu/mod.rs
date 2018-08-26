@@ -18,6 +18,8 @@ mod test;
 
 use std::result::Result as StdResult;
 use std::fmt;
+use std::collections::VecDeque;
+use std::fmt::Display;
 
 pub type Result<V> = StdResult<V, CpuError>;
 
@@ -318,10 +320,53 @@ impl Into<Instruction> for IrqCmd {
     }
 }
 
+pub const DEFAULT_HISTORY_SIZE: usize = 128;
+
+#[derive(Clone)]
+struct OpCodesHistory {
+    buffer: VecDeque<(Address, Instruction)>,
+    size: usize,
+}
+
+impl OpCodesHistory {
+    pub fn new(size: usize) -> Self {
+        OpCodesHistory {
+            size,
+            buffer: VecDeque::with_capacity(size),
+        }
+    }
+
+    pub fn store(&mut self, pc: Address, opcode: Instruction) {
+        self.buffer.push_front((pc, opcode));
+        self.buffer.truncate(self.size)
+    }
+
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+}
+
+impl Display for OpCodesHistory {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        for (pos, (pc, op)) in self.buffer.iter().rev().enumerate() {
+            write!(f, "   [{}] [0x{:04x}] - {}\n", pos, pc, op);
+        }
+        Ok(())
+    }
+}
+
+impl Default for OpCodesHistory {
+    fn default() -> Self {
+        Self::new(DEFAULT_HISTORY_SIZE)
+    }
+}
+
 #[derive(Clone)]
 pub struct Cpu<M: Mmu, O: OutputBus, I: InputBus> {
     state: State,
     run_state: CpuState,
+
+    op_code_history: OpCodesHistory,
 
     interrupt_enabled: bool,
 
@@ -340,6 +385,7 @@ Default for Cpu<M, O, I>
     fn default() -> Self {
         Cpu {
             interrupt_enabled: true,
+            op_code_history: Default::default(),
             mmu: Default::default(),
             output: Default::default(),
             state: Default::default(),
@@ -381,6 +427,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         Cpu {
             state: Default::default(),
             run_state: Default::default(),
+            op_code_history: Default::default(),
             interrupt_enabled: true,
             mmu,
             output,
@@ -390,8 +437,10 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     /// Load instruction at pc and run it
     pub fn run(&mut self) -> Result<Periods> {
+        let pc  = self.pc();
         let op = opcode(self)?;
         debug!("State: {:?} | Exec: {}", self.state, op);
+        self.op_code_history.store(pc, op);
         self.exec(op)
     }
 
@@ -628,7 +677,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     pub fn dump_opcodes(&self) -> String {
-        format!("{}", "TODO")
+        format!("Code:\n{}", self.op_code_history)
     }
 }
 
