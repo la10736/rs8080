@@ -324,7 +324,7 @@ pub const DEFAULT_HISTORY_SIZE: usize = 128;
 
 #[derive(Clone)]
 struct OpCodesHistory {
-    buffer: VecDeque<(Address, Instruction)>,
+    buffer: VecDeque<(Address, State, Instruction)>,
     size: usize,
 }
 
@@ -336,8 +336,8 @@ impl OpCodesHistory {
         }
     }
 
-    pub fn store(&mut self, pc: Address, opcode: Instruction) {
-        self.buffer.push_front((pc, opcode));
+    pub fn store(&mut self, pc: Address, state: State, opcode: Instruction) {
+        self.buffer.push_front((pc, state, opcode));
         self.buffer.truncate(self.size)
     }
 
@@ -348,8 +348,8 @@ impl OpCodesHistory {
 
 impl Display for OpCodesHistory {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        for (pos, (pc, op)) in self.buffer.iter().rev().enumerate() {
-            write!(f, "   [{}] [0x{:04x}] - {}\n", pos, pc, op);
+        for (pos, (pc, state, op)) in self.buffer.iter().rev().enumerate() {
+            write!(f, "   [{}] [0x{:04x}] - {} | {:?}\n", pos, pc, op, state);
         }
         Ok(())
     }
@@ -440,7 +440,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         let pc  = self.pc();
         let op = opcode(self)?;
         debug!("State: {:?} | Exec: {}", self.state, op);
-        self.op_code_history.store(pc, op);
+        self.op_code_history.store(pc, self.state.clone(), op);
         self.exec(op)
     }
 

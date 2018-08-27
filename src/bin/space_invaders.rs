@@ -24,6 +24,7 @@ use std::panic;
 
 mod si_memory;
 mod si_io;
+
 fn main() {
     simple_logger::init_with_level(log::Level::Warn).unwrap();
 
