@@ -1,10 +1,10 @@
-use super::*;
-use super::Cpu as GenCpu;
+use io_bus::{test::Loopback, VoidIO};
 use rstest::rstest;
 use rstest::rstest_parametrize;
 use std::cell::RefCell;
 use std::rc::Rc;
-use io_bus::{VoidIO, test::Loopback};
+use super::*;
+use super::Cpu as GenCpu;
 
 type Cpu = GenCpu<PlainMemory, VoidIO, VoidIO>;
 type PlainMemoryCpu<O, I> = GenCpu<PlainMemory, O, I>;
@@ -1161,22 +1161,24 @@ fn lda_should_load_accumulator(mut cpu: Cpu) {
 fn shld_should_store_hl_pair(mut cpu: Cpu) {
     let hl = 0xd1f2;
     let addr = 0x2031;
+
     cpu.set_hl(hl);
 
     cpu.exec(Shld(addr));
 
-    assert_eq!(Ok(hl), cpu.mmu.read_word(addr));
+    assert_eq!(Ok(0xf2), cpu.mmu.read_byte(addr));
+    assert_eq!(Ok(0xd1), cpu.mmu.read_byte(addr + 1));
 }
 
 #[rstest]
 fn lhld_should_load_hl_pair(mut cpu: Cpu) {
-    let hl = 0xd1f2;
     let addr = 0x2031;
-    cpu.mmu.write_word(addr, hl);
+    cpu.mmu.write_byte(addr, 0xff);
+    cpu.mmu.write_byte(addr + 1, 0x03);
 
     cpu.exec(Lhld(addr));
 
-    assert_eq!(cpu.hl(), hl);
+    assert_eq!(cpu.hl(), 0x03ff);
 }
 
 #[rstest]
@@ -1552,7 +1554,7 @@ mod io {
     #[test]
     fn output_should_send_accumulator_to_output_bus() {
         #[derive(Default)]
-        struct Out {id: RefCell<Option<Byte>>, data: RefCell<Option<Byte>>};
+        struct Out { id: RefCell<Option<Byte>>, data: RefCell<Option<Byte>> };
         impl OutputBus for Out {
             fn send(&self, id: Byte, data: Byte) {
                 self.id.replace(Some(id));
@@ -1663,7 +1665,6 @@ mod irq_instruction {
 
         assert!(cpu.interrupt_enabled);
     }
-
 }
 
 #[rstest]
