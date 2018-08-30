@@ -74,6 +74,32 @@ fn main() {
             break;
         }
 
+        if window.is_key_down(Key::Key5) {
+            io.ui_event(si_io::Ev::Coin(true))
+        } else {
+            io.ui_event(si_io::Ev::Coin(false))
+        }
+        if window.is_key_down(Key::Key1) {
+            io.ui_event(si_io::Ev::P1Start(true))
+        } else {
+            io.ui_event(si_io::Ev::P1Start(false))
+        }
+        if window.is_key_down(Key::Left) {
+            io.ui_event(si_io::Ev::P1Left(true))
+        } else {
+            io.ui_event(si_io::Ev::P1Left(false))
+        }
+        if window.is_key_down(Key::Right) {
+            io.ui_event(si_io::Ev::P1Right(true))
+        } else {
+            io.ui_event(si_io::Ev::P1Right(false))
+        }
+        if window.is_key_down(Key::Space) {
+            io.ui_event(si_io::Ev::P1Shoot(true))
+        } else {
+            io.ui_event(si_io::Ev::P1Shoot(false))
+        }
+
 
         let expected_clocks = (frames * CLOCKS_PER_FRAME) +
             if upper {
@@ -86,12 +112,21 @@ fn main() {
             match cpu.run() {
                 Ok(c) => {clocks += c as u64;},
                 Err(e) => {
-                    eprintln!("State: \n{}", cpu.dump_state());
-                    eprintln!("{}", cpu.dump_memory());
-                    eprintln!("Stack: \n{}", cpu.dump_stack());
-                    eprintln!("last instructions: \n{}", cpu.dump_opcodes());
+                    dump(cpu);
                     panic!("Received panic: {:?}", e);
                 }
+            }
+        }
+        let limit = 25465654;
+
+        if clocks > limit - CLOCKS_PER_FRAME * 30 {
+            println!("CLOCK = {}", clocks);
+        }
+
+        if clocks >= limit + CLOCKS_PER_FRAME * 3 {
+            dump(cpu);
+            loop {
+                std::thread::sleep(time::Duration::from_millis(1000));
             }
         }
         // 1. Update Frame buffer
@@ -111,6 +146,14 @@ fn main() {
 
     info!("Game Done");
 }
+
+fn dump(mut cpu: Cpu<SIMmu, Rc<IO>, Rc<IO>>) {
+    println!("State: \n{}", cpu.dump_state());
+    println!("{}", cpu.dump_memory());
+    println!("Stack: \n{}", cpu.dump_stack());
+    println!("last instructions: \n{}", cpu.dump_opcodes());
+}
+
 mod graphics;
 
 mod gpu;

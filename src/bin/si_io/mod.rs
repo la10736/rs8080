@@ -33,7 +33,7 @@ const LIVES_MASK: u8 = 0x03;
 const BONUS_LIFE_MASK: u8 = 0x08;
 const COIN_INFO_MASK: u8 = 0x80;
 
-enum Ev {
+pub enum Ev {
     Coin(bool),
     Tilt(bool),
     P1Start(bool),
