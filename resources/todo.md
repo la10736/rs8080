@@ -7,10 +7,10 @@
 - [x] Implement Buttons Base
 - [ ] Some debugging options
   - [x] Pause
-  - [ ] Dump logs
-  - [ ] Frame Count
-  - [ ] Pause at frame
-  - [ ] Step one frame
+  - [x] Dump logs
+  - [x] Frame Count
+  - [x] Pause at frame
+  - [x] Step one or more frame
   - [ ] Memory watcher
 - [ ] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation

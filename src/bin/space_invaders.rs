@@ -83,7 +83,11 @@ const CLOCKS_PER_HALF_FRAME: u64 = CLOCK / 120;
 const CLOCKS_PER_FRAME: u64 = CLOCKS_PER_HALF_FRAME * 2;
 
 enum Command {
-    Dump
+    Dump,
+    Pause,
+    Continue,
+    Step(usize),
+    PrintFrames(bool),
 }
 
 fn main() {
@@ -120,23 +124,35 @@ fn main() {
     let mut clocks: u64 = 0;
     let (tx, rx) = std::sync::mpsc::channel();
 
-    let pause_in_frames = RefCell::new(None);
+    let mut pause_in_frames = Some(760);
 
     let mut pause = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::P)),
-        action: |state| { *pause_in_frames.borrow_mut() = if state { Some(0) } else { None }; },
+        action: {
+            let tx = tx.clone();
+            move |state| tx.send(if state { Command::Pause } else { Command::Continue }).unwrap()
+        },
     });
-    let mut step = Box::new(ActiveKey {
-        key: FlipFlopKey::from(DirectKey::from(Key::S)),
-        action: |_| { *pause_in_frames.borrow_mut() = Some(1); },
-    });
-    let pframe = true;
-    let should_print_frame = RefCell::new(pframe);
+
+    let mut steps: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)]
+        .into_iter().map(|(key, s)|
+        Box::new(ActiveKey {
+            key: FlipFlopKey::from(DirectKey::from(key)),
+            action: {
+                let tx = tx.clone();
+                move |_| { tx.send(Command::Step(s)); }
+            },
+        }) as Box<WindowKey>
+    ).collect();
+    let mut should_print_frame = true;
     let mut print_frame = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::F)),
-        action: |state| { *should_print_frame.borrow_mut() = state; },
+        action: {
+            let tx = tx.clone();
+            move |state| { tx.send(Command::PrintFrames(state)); }
+        },
     });
-    print_frame.change_state(pframe);
+    print_frame.change_state(should_print_frame);
 
     let mut dump_state = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::D)),
@@ -159,7 +175,7 @@ fn main() {
         .collect();
     buttons.push(pause);
     buttons.push(print_frame);
-    buttons.push(step);
+    buttons.extend(steps.into_iter());
     buttons.push(dump_state);
 
     loop {
@@ -168,42 +184,34 @@ fn main() {
             break;
         }
 
+        if let Ok(cmd) = rx.try_recv() {
+            match cmd {
+                Command::Dump => dump(&cpu),
+                Command::Pause => { pause_in_frames = Some(0) }
+                Command::Continue => { pause_in_frames = None }
+                Command::Step(n) => { pause_in_frames = Some(n) }
+                Command::PrintFrames(v) => { should_print_frame = v }
+            }
+        }
+
         buttons.iter_mut().for_each(|b| { b.update(&window); });
 
-        if *pause_in_frames.borrow() != Some(0) {
+        if pause_in_frames != Some(0) {
             clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
                 .unwrap_or_else(|e| critical(&cpu, e));
 
             window.update_with_buffer(&fb);
 
-            if *should_print_frame.borrow() {
+            if should_print_frame {
                 println!("Frame nr: {}", frames);
             }
 
             frames += 1;
 
-            let limit = 25465654;
-
-            if clocks > limit - CLOCKS_PER_FRAME * 30 {
-//                println!("CLOCK = {}", clocks);
-            }
-
-//        if clocks >= limit + CLOCKS_PER_FRAME * 3 {
-//            dump(cpu);
-//            loop {
-//                std::thread::sleep(time::Duration::from_millis(1000));
-//            }
-//        }
-            let p = pause_in_frames.borrow().and_then(|n| if n > 0 { Some(n - 1) } else { None });
-            *pause_in_frames.borrow_mut() = p;
+            pause_in_frames = pause_in_frames.and_then(|n| if n > 0 { Some(n - 1) } else { None });
         } else {
             std::thread::sleep(time::Duration::from_millis(100));
             window.update();
-        }
-        if let Ok(cmd) = rx.try_recv() {
-            match cmd {
-                Command::Dump => dump(&cpu),
-            }
         }
     }
 
