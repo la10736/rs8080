@@ -1,4 +1,5 @@
 #![feature(proc_macro)]
+#![feature(fn_traits)]
 extern crate rs8080;
 extern crate minifb;
 #[macro_use]
@@ -21,9 +22,137 @@ use gpu::Gpu;
 use std::time;
 use graphics::{WHITE, BLACK, Canvas, Rect};
 use std::panic;
+use std::ops::Deref;
+use std::cell::RefCell;
 
 mod si_memory;
 mod si_io;
+
+#[derive(Default)]
+struct FlipFlop {
+    pub state: bool
+}
+
+impl FlipFlop {
+    pub fn change(&mut self) {
+        self.state = !self.state;
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum KeyState {
+    Pressed,
+    Released,
+}
+
+impl From<bool> for KeyState {
+    fn from(state: bool) -> Self {
+        match state {
+            true => KeyState::Pressed,
+            false => KeyState::Released
+        }
+    }
+}
+
+impl Into<bool> for KeyState {
+    fn into(self) -> bool {
+        match self {
+            KeyState::Pressed => true,
+            KeyState::Released => false,
+        }
+    }
+}
+
+trait WindowKey {
+    fn update(&mut self, window: &Window) -> bool;
+    fn active(&self) -> bool;
+}
+
+struct DirectKey {
+    key: Key,
+    last: KeyState,
+}
+
+impl From<Key> for DirectKey {
+    fn from(key: Key) -> Self {
+        DirectKey {
+            key,
+            last: KeyState::Released,
+        }
+    }
+}
+
+impl WindowKey for DirectKey {
+    fn update(&mut self, window: &Window) -> bool {
+        let prev = self.last;
+        self.last = window.is_key_down(self.key).into();
+        prev != self.last
+    }
+
+    fn active(&self) -> bool {
+        self.last.into()
+    }
+}
+
+struct FlipFlopKey<K: WindowKey> {
+    key: K,
+    flip_flop: FlipFlop,
+}
+
+impl<K: WindowKey> From<K> for FlipFlopKey<K> {
+    fn from(key: K) -> Self {
+        FlipFlopKey {
+            key,
+            flip_flop: Default::default(),
+        }
+    }
+}
+
+impl<K: WindowKey> WindowKey for FlipFlopKey<K> {
+    fn update(&mut self, window: &Window) -> bool {
+        let changed = self.key.update(window);
+
+        if changed && !self.key.active() {
+            self.flip_flop.change();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn active(&self) -> bool {
+        self.flip_flop.state
+    }
+}
+
+struct ActiveKey<K: WindowKey, F: Fn(bool)> {
+    key: K,
+    action: F,
+}
+
+type DKey<F> = ActiveKey<DirectKey, F>;
+
+impl<K: WindowKey, F: Fn(bool)> WindowKey for ActiveKey<K, F> {
+    fn update(&mut self, window: &Window) -> bool {
+        let changed = self.key.update(window);
+        if changed {
+            self.action.call((self.active(), ));
+        }
+        changed
+    }
+
+    fn active(&self) -> bool {
+        self.key.active()
+    }
+}
+
+fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: si_io::Ev) -> Box<WindowKey + 'a> {
+    Box::new(DKey {
+        key: key.into(),
+        action: move |state| io.ui_event(ev, state),
+    })
+}
+
 
 fn main() {
     simple_logger::init_with_level(log::Level::Warn).unwrap();
@@ -57,7 +186,7 @@ fn main() {
         fg: WHITE,
         bg: BLACK,
     };
-    let (up, down) = Rect::from(&canvas).split_horizontal(h/2);
+    let (up, down) = Rect::from(&canvas).split_horizontal(h / 2);
 
     let start = time::Instant::now();
     let mut last_frame = start;
@@ -68,86 +197,85 @@ fn main() {
     const CLOCKS_PER_HALF_FRAME: u64 = CLOCK / 120;
     const CLOCKS_PER_FRAME: u64 = CLOCKS_PER_HALF_FRAME * 2;
 
+    let paused = RefCell::new(false);
+    let mut pause = Box::new(ActiveKey {
+        key: FlipFlopKey::from(DirectKey::from(Key::P)),
+        action: |state| {*paused.borrow_mut() = state;},
+    });
+
+    let game_buttons = [
+        (Key::Key5, si_io::Ev::Coin),
+        (Key::Key1, si_io::Ev::P1Start),
+        (Key::Left, si_io::Ev::P1Left),
+        (Key::Right, si_io::Ev::P1Right),
+        (Key::Space, si_io::Ev::P1Shoot),
+    ];
+
+    let mut buttons: Vec<_> = game_buttons.into_iter().cloned()
+        .map(|(k, ev)| game_key(k, io.clone(), ev))
+        .collect();
+    buttons.push(pause);
+
     loop {
         if !window.is_open() || window.is_key_down(Key::Escape) {
             debug!("Should terminate");
             break;
         }
 
-        if window.is_key_down(Key::Key5) {
-            io.ui_event(si_io::Ev::Coin(true))
-        } else {
-            io.ui_event(si_io::Ev::Coin(false))
-        }
-        if window.is_key_down(Key::Key1) {
-            io.ui_event(si_io::Ev::P1Start(true))
-        } else {
-            io.ui_event(si_io::Ev::P1Start(false))
-        }
-        if window.is_key_down(Key::Left) {
-            io.ui_event(si_io::Ev::P1Left(true))
-        } else {
-            io.ui_event(si_io::Ev::P1Left(false))
-        }
-        if window.is_key_down(Key::Right) {
-            io.ui_event(si_io::Ev::P1Right(true))
-        } else {
-            io.ui_event(si_io::Ev::P1Right(false))
-        }
-        if window.is_key_down(Key::Space) {
-            io.ui_event(si_io::Ev::P1Shoot(true))
-        } else {
-            io.ui_event(si_io::Ev::P1Shoot(false))
-        }
+        buttons.iter_mut().for_each(|b| { b.update(&window); });
 
+        if !*paused.borrow() {
+            let expected_clocks = (frames * CLOCKS_PER_FRAME) +
+                if upper {
+                    0
+                } else {
+                    CLOCKS_PER_HALF_FRAME
+                };
 
-        let expected_clocks = (frames * CLOCKS_PER_FRAME) +
-            if upper {
-                0
-            } else {
-                CLOCKS_PER_HALF_FRAME
-            };
-
-        while clocks < expected_clocks {
-            match cpu.run() {
-                Ok(c) => {clocks += c as u64;},
-                Err(e) => {
-                    dump(cpu);
-                    panic!("Received panic: {:?}", e);
+            while clocks < expected_clocks {
+                match cpu.run() {
+                    Ok(c) => { clocks += c as u64; }
+                    Err(e) => {
+                        dump(&cpu);
+                        panic!("Received panic: {:?}", e);
+                    }
                 }
             }
-        }
-        let limit = 25465654;
+            let limit = 25465654;
 
-        if clocks > limit - CLOCKS_PER_FRAME * 30 {
-            println!("CLOCK = {}", clocks);
-        }
-
-        if clocks >= limit + CLOCKS_PER_FRAME * 3 {
-            dump(cpu);
-            loop {
-                std::thread::sleep(time::Duration::from_millis(1000));
+            if clocks > limit - CLOCKS_PER_FRAME * 30 {
+//                println!("CLOCK = {}", clocks);
             }
-        }
-        // 1. Update Frame buffer
-        // 2. Fire IRQ
-        if upper {
-            gpu.fill_canvas(fb.as_mut(), &canvas, Some(up));
-            cpu.irq(IrqCmd::Irq1);
-        } else {
-            gpu.fill_canvas(fb.as_mut(), &canvas, Some(down));
-            cpu.irq(IrqCmd::Irq2);
-            window.update_with_buffer(&fb);
-            frames += 1;
-        };
 
-        upper = !upper;
+//        if clocks >= limit + CLOCKS_PER_FRAME * 3 {
+//            dump(cpu);
+//            loop {
+//                std::thread::sleep(time::Duration::from_millis(1000));
+//            }
+//        }
+            // 1. Update Frame buffer
+            // 2. Fire IRQ
+            if upper {
+                gpu.fill_canvas(fb.as_mut(), &canvas, Some(up));
+                cpu.irq(IrqCmd::Irq1);
+            } else {
+                gpu.fill_canvas(fb.as_mut(), &canvas, Some(down));
+                cpu.irq(IrqCmd::Irq2);
+                window.update_with_buffer(&fb);
+                frames += 1;
+            };
+
+            upper = !upper;
+        } else {
+            std::thread::sleep(time::Duration::from_millis(100));
+            window.update();
+        }
     }
 
     info!("Game Done");
 }
 
-fn dump(mut cpu: Cpu<SIMmu, Rc<IO>, Rc<IO>>) {
+fn dump(cpu: &Cpu<SIMmu, Rc<IO>, Rc<IO>>) {
     println!("State: \n{}", cpu.dump_state());
     println!("{}", cpu.dump_memory());
     println!("Stack: \n{}", cpu.dump_stack());
@@ -157,6 +285,7 @@ fn dump(mut cpu: Cpu<SIMmu, Rc<IO>, Rc<IO>>) {
 mod graphics;
 
 mod gpu;
+
 const W: usize = 256;
 const H: usize = 224;
 const W_MARGIN: usize = 20;

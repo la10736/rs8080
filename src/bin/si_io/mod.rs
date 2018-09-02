@@ -33,17 +33,18 @@ const LIVES_MASK: u8 = 0x03;
 const BONUS_LIFE_MASK: u8 = 0x08;
 const COIN_INFO_MASK: u8 = 0x80;
 
+#[derive(Copy, Clone)]
 pub enum Ev {
-    Coin(bool),
-    Tilt(bool),
-    P1Start(bool),
-    P1Shoot(bool),
-    P1Left(bool),
-    P1Right(bool),
-    P2Start(bool),
-    P2Shoot(bool),
-    P2Left(bool),
-    P2Right(bool),
+    Coin,
+    Tilt,
+    P1Start,
+    P1Shoot,
+    P1Left,
+    P1Right,
+    P2Start,
+    P2Shoot,
+    P2Left,
+    P2Right,
 }
 
 pub struct IO {
@@ -61,18 +62,18 @@ impl IO {
         }
     }
 
-    pub fn ui_event(&self, ev: Ev) {
+    pub fn ui_event(&self, ev: Ev, pressed: bool) {
         let (port, bit, set) = match ev {
-            Ev::Coin(pressed) => (&self.port1, COIN_BIT, !pressed),
-            Ev::Tilt(pressed) => (&self.port2, TILT_BIT, pressed),
-            Ev::P1Start(pressed) => (&self.port1, P1START_BIT, pressed),
-            Ev::P1Shoot(pressed) => (&self.port1, P1SHOOT_BIT, pressed),
-            Ev::P1Left(pressed) => (&self.port1, P1LEFT_BIT, pressed),
-            Ev::P1Right(pressed) => (&self.port1, P1RIGHT_BIT, pressed),
-            Ev::P2Start(pressed) => (&self.port1, P2START_BIT, pressed),
-            Ev::P2Shoot(pressed) => (&self.port2, P1SHOOT_BIT, pressed),
-            Ev::P2Left(pressed) => (&self.port2, P1LEFT_BIT, pressed),
-            Ev::P2Right(pressed) => (&self.port2, P1RIGHT_BIT, pressed),
+            Ev::Coin => (&self.port1, COIN_BIT, !pressed),
+            Ev::Tilt => (&self.port2, TILT_BIT, pressed),
+            Ev::P1Start => (&self.port1, P1START_BIT, pressed),
+            Ev::P1Shoot => (&self.port1, P1SHOOT_BIT, pressed),
+            Ev::P1Left => (&self.port1, P1LEFT_BIT, pressed),
+            Ev::P1Right => (&self.port1, P1RIGHT_BIT, pressed),
+            Ev::P2Start => (&self.port1, P2START_BIT, pressed),
+            Ev::P2Shoot => (&self.port2, P1SHOOT_BIT, pressed),
+            Ev::P2Left => (&self.port2, P1LEFT_BIT, pressed),
+            Ev::P2Right => (&self.port2, P1RIGHT_BIT, pressed),
         };
 
         if set {
@@ -189,30 +190,30 @@ mod test {
     }
 
     #[rstest_parametrize(
-    port, event, bit, set,
-    case(PORT1, Unwrap("Ev::Coin(true)"), COIN_BIT, false),
-    case(PORT1, Unwrap("Ev::Coin(false)"), COIN_BIT, true),
-    case(PORT2, Unwrap("Ev::Tilt(true)"), TILT_BIT, true),
-    case(PORT2, Unwrap("Ev::Tilt(false)"), TILT_BIT, false),
-    case(PORT1, Unwrap("Ev::P2Start(true)"), P2START_BIT, true),
-    case(PORT1, Unwrap("Ev::P2Start(false)"), P2START_BIT, false),
-    case(PORT1, Unwrap("Ev::P1Start(true)"), P1START_BIT, true),
-    case(PORT1, Unwrap("Ev::P1Start(false)"), P1START_BIT, false),
-    case(PORT1, Unwrap("Ev::P1Shoot(true)"), P1SHOOT_BIT, true),
-    case(PORT1, Unwrap("Ev::P1Shoot(false)"), P1SHOOT_BIT, false),
-    case(PORT1, Unwrap("Ev::P1Left(true)"), P1LEFT_BIT, true),
-    case(PORT1, Unwrap("Ev::P1Left(false)"), P1LEFT_BIT, false),
-    case(PORT1, Unwrap("Ev::P1Right(true)"), P1RIGHT_BIT, true),
-    case(PORT1, Unwrap("Ev::P1Right(false)"), P1RIGHT_BIT, false),
-    case(PORT2, Unwrap("Ev::P2Shoot(true)"), P2SHOOT_BIT, true),
-    case(PORT2, Unwrap("Ev::P2Shoot(false)"), P2SHOOT_BIT, false),
-    case(PORT2, Unwrap("Ev::P2Left(true)"), P2LEFT_BIT, true),
-    case(PORT2, Unwrap("Ev::P2Left(false)"), P2LEFT_BIT, false),
-    case(PORT2, Unwrap("Ev::P2Right(true)"), P2RIGHT_BIT, true),
-    case(PORT2, Unwrap("Ev::P2Right(false)"), P2RIGHT_BIT, false),
+    port, event, state, bit, set,
+    case(PORT1, Unwrap("Ev::Coin"), true, COIN_BIT, false),
+    case(PORT1, Unwrap("Ev::Coin"), false, COIN_BIT, true),
+    case(PORT2, Unwrap("Ev::Tilt"), true, TILT_BIT, true),
+    case(PORT2, Unwrap("Ev::Tilt"), false, TILT_BIT, false),
+    case(PORT1, Unwrap("Ev::P2Start"), true, P2START_BIT, true),
+    case(PORT1, Unwrap("Ev::P2Start"), false, P2START_BIT, false),
+    case(PORT1, Unwrap("Ev::P1Start"), true, P1START_BIT, true),
+    case(PORT1, Unwrap("Ev::P1Start"), false, P1START_BIT, false),
+    case(PORT1, Unwrap("Ev::P1Shoot"), true, P1SHOOT_BIT, true),
+    case(PORT1, Unwrap("Ev::P1Shoot"), false, P1SHOOT_BIT, false),
+    case(PORT1, Unwrap("Ev::P1Left"), true, P1LEFT_BIT, true),
+    case(PORT1, Unwrap("Ev::P1Left"), false, P1LEFT_BIT, false),
+    case(PORT1, Unwrap("Ev::P1Right"), true, P1RIGHT_BIT, true),
+    case(PORT1, Unwrap("Ev::P1Right"), false, P1RIGHT_BIT, false),
+    case(PORT2, Unwrap("Ev::P2Shoot"), true, P2SHOOT_BIT, true),
+    case(PORT2, Unwrap("Ev::P2Shoot"), false, P2SHOOT_BIT, false),
+    case(PORT2, Unwrap("Ev::P2Left"), true, P2LEFT_BIT, true),
+    case(PORT2, Unwrap("Ev::P2Left"), false, P2LEFT_BIT, false),
+    case(PORT2, Unwrap("Ev::P2Right"), true, P2RIGHT_BIT, true),
+    case(PORT2, Unwrap("Ev::P2Right"), false, P2RIGHT_BIT, false),
     )]
-    fn should_change_bit(io: IO, port: u8, event: Ev, bit: u8, set: bool) {
-        io.ui_event(event);
+    fn should_change_bit(io: IO, port: u8, event: Ev, state: bool, bit: u8, set: bool) {
+        io.ui_event(event, state);
 
         let mask = 0x01 << bit;
         let expected = if set { mask } else { 0x00 };

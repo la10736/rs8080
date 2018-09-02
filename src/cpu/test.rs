@@ -1165,14 +1165,17 @@ fn shld_should_store_hl_pair(mut cpu: Cpu) {
 
     cpu.exec(Shld(addr));
 
-    assert_eq!(Ok(hl), cpu.mmu.read_word(addr));
+    assert_eq!(Ok(cpu.state.l.val), cpu.mmu.read_byte(addr));
+    assert_eq!(Ok(cpu.state.h.val), cpu.mmu.read_byte(addr + 1));
 }
 
 #[rstest]
 fn lhld_should_load_hl_pair(mut cpu: Cpu) {
     let hl = 0xd1f2;
     let addr = 0x2031;
-    cpu.mmu.write_word(addr, hl);
+
+    cpu.mmu.write_byte(addr, 0xf2);
+    cpu.mmu.write_byte(addr + 1, 0xd1);
 
     cpu.exec(Lhld(addr));
 
@@ -1228,6 +1231,41 @@ fn jump_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
     cpu.exec(cmd);
 
     assert_eq!(cpu.state.pc, expected)
+}
+
+#[rstest]
+fn push_addr_should_push_high_part_first(mut cpu: Cpu) {
+    let sp = 0x4212;
+    let addr = 0xad12;
+    cpu.state.set_sp(sp);
+
+    cpu.push_addr(addr);
+
+    assert_eq!(Ok(0xad), cpu.mmu.read_byte(sp - 1));
+    assert_eq!(Ok(0x12), cpu.mmu.read_byte(sp - 2));
+}
+
+#[rstest]
+fn pop_addr_should_pop_low_part_first(mut cpu: Cpu) {
+    let sp = 0x4212;
+    let addr = 0xad12;
+    cpu.state.set_sp(sp);
+
+    cpu.mmu.write_byte(sp, 0x12).unwrap();
+    cpu.mmu.write_byte(sp + 1, 0xad).unwrap();
+
+    assert_eq!(addr, cpu.pop_addr().unwrap());
+}
+
+#[rstest]
+fn push_and_pop_addr_round_trip(mut cpu: Cpu) {
+    let sp = 0x4212;
+    let addr = 0xad12;
+    cpu.state.set_sp(sp);
+
+    cpu.push_addr(addr);
+
+    assert_eq!(addr, cpu.pop_addr().unwrap());
 }
 
 #[rstest]

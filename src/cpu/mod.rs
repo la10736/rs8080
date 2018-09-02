@@ -1,7 +1,7 @@
 use ::std::mem::swap;
 use self::Flag::*;
 use super::{
-    Address, Byte, Word,
+    Address, Byte,
     asm::{BytePair, Instruction, Instruction::*,
           Reg, RegPair, RegPairValue, CondFlag, IrqAddr},
     registers::*,
@@ -226,16 +226,6 @@ pub trait Mmu {
     fn dump(&self) -> String;
 
     fn ref_mut(&mut self, address: Address) -> Result<&mut Byte>;
-
-    fn read_word(&self, address: Address) -> Result<Word> {
-        Ok(((self.read_byte(address)? as u16) << 8) | (self.read_byte(address + 1)? as u16))
-    }
-
-    fn write_word(&mut self, address: Address, val: Word) -> Result<()> {
-        self.write_byte(address, (val >> 8) as Byte)?;
-        self.write_byte(address + 1, (val & 0xff) as Byte)?;
-        Ok(())
-    }
 
     fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) -> Result<()> {
         data.as_ref().iter().enumerate().map(
@@ -819,8 +809,8 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn push_addr(&mut self, address: Address) -> Result<()> {
-        self.push_val((address & 0xff) as Byte)?;
-        self.push_val(((address >> 8) & 0xff) as Byte)
+        self.push_val(((address >> 8) & 0xff) as Byte)?;
+        self.push_val((address & 0xff) as Byte)
     }
 
     fn push_reg(&mut self, r: Reg) -> Result<()> {
@@ -840,7 +830,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn pop_addr(&mut self) -> Result<Address> {
-        let (hi, lo) = (self.pop_val()?, self.pop_val()?);
+        let (lo, hi) = (self.pop_val()?, self.pop_val()?);
         Ok((hi as Address) << 8 | (lo as Address))
     }
 
@@ -1293,15 +1283,14 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn shld(&mut self, address: Address) -> Result<Periods> {
-        let hl = self.hl().into();
-        let bus = &mut self.mmu;
-        bus.write_word(address, hl)?;
+        self.mmu.write_byte(address, self.state.l.val)?;
+        self.mmu.write_byte(address + 1, self.state.h.val)?;
         Ok(16)
     }
 
     fn lhld(&mut self, address: Address) -> Result<Periods> {
-        self.state.h = self.mmu.read_byte(address)?.into();
-        self.state.l = self.mmu.read_byte(address + 1)?.into();
+        self.state.l = self.mmu.read_byte(address)?.into();
+        self.state.h = self.mmu.read_byte(address + 1)?.into();
         Ok(16)
     }
 }
