@@ -9,14 +9,19 @@ use rs8080::{
 };
 
 fn main() {
-    let path = std::env::args().nth(1)
+    let _ = std::env::args().nth(1)
         .expect("At least one argument as path of code to disassemble");
 
     let mut code = Default::default();
-    std::fs::File::open(path)
-        .unwrap()
-        .read_to_end(&mut code)
-        .expect("Cannot read bytes data");
+    std::env::args().skip(1).for_each(
+        |path|
+            {
+                std::fs::File::open(path)
+                    .unwrap()
+                    .read_to_end(&mut code)
+                    .expect("Cannot read bytes data");
+            }
+    );
 
     let disassembled = disassemble(code).unwrap();
 
