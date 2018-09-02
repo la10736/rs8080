@@ -101,7 +101,7 @@ fn main() {
 
     let mmu = SIMmu::new(rom.into(), vram.as_mut_ptr().into());
 
-    let io = Rc::new(IO::default());
+    let io = Rc::new(IO::default().change_lives(5));
 
     let mut cpu = Cpu::new(mmu, io.clone(), io.clone());
     let gpu = Gpu::new(W, H, vram.as_ptr());
@@ -144,7 +144,7 @@ fn main() {
             },
         }) as Box<WindowKey>
     ).collect();
-    let mut should_print_frame = true;
+    let mut should_print_frame = false;
     let mut print_frame = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::F)),
         action: {
