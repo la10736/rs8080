@@ -82,6 +82,10 @@ const CLOCK: u64 = 2_000_000;
 const CLOCKS_PER_HALF_FRAME: u64 = CLOCK / 120;
 const CLOCKS_PER_FRAME: u64 = CLOCKS_PER_HALF_FRAME * 2;
 
+enum Command {
+    Dump
+}
+
 fn main() {
     simple_logger::init_with_level(log::Level::Warn).unwrap();
 
@@ -114,6 +118,7 @@ fn main() {
     let mut frames: u64 = 1;
     let mut upper = true;
     let mut clocks: u64 = 0;
+    let (tx, rx) = std::sync::mpsc::channel();
 
     let pause_in_frames = RefCell::new(None);
 
@@ -123,7 +128,7 @@ fn main() {
     });
     let mut step = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::S)),
-        action: |state| { *pause_in_frames.borrow_mut() = Some(1); },
+        action: |_| { *pause_in_frames.borrow_mut() = Some(1); },
     });
     let pframe = true;
     let should_print_frame = RefCell::new(pframe);
@@ -132,6 +137,14 @@ fn main() {
         action: |state| { *should_print_frame.borrow_mut() = state; },
     });
     print_frame.change_state(pframe);
+
+    let mut dump_state = Box::new(ActiveKey {
+        key: FlipFlopKey::from(DirectKey::from(Key::D)),
+        action: {
+            let tx = tx.clone();
+            move |_| { tx.send(Command::Dump).unwrap(); }
+        },
+    });
 
     let game_buttons = [
         (Key::Key5, si_io::Ev::Coin),
@@ -147,6 +160,7 @@ fn main() {
     buttons.push(pause);
     buttons.push(print_frame);
     buttons.push(step);
+    buttons.push(dump_state);
 
     loop {
         if !window.is_open() || window.is_key_down(Key::Escape) {
@@ -185,6 +199,11 @@ fn main() {
         } else {
             std::thread::sleep(time::Duration::from_millis(100));
             window.update();
+        }
+        if let Ok(cmd) = rx.try_recv() {
+            match cmd {
+                Command::Dump => dump(&cpu),
+            }
         }
     }
 
