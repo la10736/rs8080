@@ -70,12 +70,17 @@ impl Into<bool> for KeyState {
 trait WindowKey {
     fn update(&mut self, window: &Window) -> bool;
     fn active(&self) -> bool;
+    fn change_state(&mut self, val: bool) -> bool;
 }
 
 struct DirectKey {
     key: Key,
     last: KeyState,
 }
+
+const CLOCK: u64 = 2_000_000;
+const CLOCKS_PER_HALF_FRAME: u64 = CLOCK / 120;
+const CLOCKS_PER_FRAME: u64 = CLOCKS_PER_HALF_FRAME * 2;
 
 fn main() {
     simple_logger::init_with_level(log::Level::Warn).unwrap();
@@ -103,28 +108,30 @@ fn main() {
         panic!("{}", e);
     });
     let mut fb = vec![0; w * h];
-    let canvas = Canvas {
-        width: w,
-        height: h,
-        fg: WHITE,
-        bg: BLACK,
-    };
-    let (up, down) = Rect::from(&canvas).split_horizontal(h / 2);
 
     let start = time::Instant::now();
     let mut last_frame = start;
     let mut frames: u64 = 1;
     let mut upper = true;
     let mut clocks: u64 = 0;
-    const CLOCK: u64 = 2_000_000;
-    const CLOCKS_PER_HALF_FRAME: u64 = CLOCK / 120;
-    const CLOCKS_PER_FRAME: u64 = CLOCKS_PER_HALF_FRAME * 2;
 
-    let paused = RefCell::new(false);
+    let pause_in_frames = RefCell::new(None);
+
     let mut pause = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::P)),
-        action: |state| { *paused.borrow_mut() = state; },
+        action: |state| { *pause_in_frames.borrow_mut() = if state { Some(0) } else { None }; },
     });
+    let mut step = Box::new(ActiveKey {
+        key: FlipFlopKey::from(DirectKey::from(Key::S)),
+        action: |state| { *pause_in_frames.borrow_mut() = Some(1); },
+    });
+    let pframe = true;
+    let should_print_frame = RefCell::new(pframe);
+    let mut print_frame = Box::new(ActiveKey {
+        key: FlipFlopKey::from(DirectKey::from(Key::F)),
+        action: |state| { *should_print_frame.borrow_mut() = state; },
+    });
+    print_frame.change_state(pframe);
 
     let game_buttons = [
         (Key::Key5, si_io::Ev::Coin),
@@ -138,6 +145,8 @@ fn main() {
         .map(|(k, ev)| game_key(k, io.clone(), ev))
         .collect();
     buttons.push(pause);
+    buttons.push(print_frame);
+    buttons.push(step);
 
     loop {
         if !window.is_open() || window.is_key_down(Key::Escape) {
@@ -147,24 +156,16 @@ fn main() {
 
         buttons.iter_mut().for_each(|b| { b.update(&window); });
 
-        if !*paused.borrow() {
-            let expected_clocks = frames * CLOCKS_PER_FRAME;
-
-            // Up Frame
-            clocks = cpu_run_till(&mut cpu, clocks, expected_clocks)
+        if *pause_in_frames.borrow() != Some(0) {
+            clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
                 .unwrap_or_else(|e| critical(&cpu, e));
-
-            gpu.fill_canvas(fb.as_mut(), &canvas, Some(up));
-            cpu.irq(IrqCmd::Irq1);
-
-            // Down Frame
-            clocks = cpu_run_till(&mut cpu, clocks, expected_clocks + CLOCKS_PER_HALF_FRAME)
-                .unwrap_or_else(|e| critical(&cpu, e));
-
-            gpu.fill_canvas(fb.as_mut(), &canvas, Some(down));
-            cpu.irq(IrqCmd::Irq2);
 
             window.update_with_buffer(&fb);
+
+            if *should_print_frame.borrow() {
+                println!("Frame nr: {}", frames);
+            }
+
             frames += 1;
 
             let limit = 25465654;
@@ -179,6 +180,8 @@ fn main() {
 //                std::thread::sleep(time::Duration::from_millis(1000));
 //            }
 //        }
+            let p = pause_in_frames.borrow().and_then(|n| if n > 0 { Some(n - 1) } else { None });
+            *pause_in_frames.borrow_mut() = p;
         } else {
             std::thread::sleep(time::Duration::from_millis(100));
             window.update();
@@ -186,6 +189,29 @@ fn main() {
     }
 
     info!("Game Done");
+}
+
+fn next_frame(cpu: &mut Cpu, gpu: &Gpu, w: usize, h: usize, fb: &mut Vec<u32>,
+              frames: u64, mut clocks: u64) -> Result<u64, CpuError> {
+    let expected_clocks = frames * CLOCKS_PER_FRAME;
+    let canvas = Canvas {
+        width: w,
+        height: h,
+        fg: WHITE,
+        bg: BLACK,
+    };
+    let (up, down) = Rect::from(&canvas).split_horizontal(h / 2);
+
+    // Up Frame
+    clocks = cpu_run_till(cpu, clocks, expected_clocks)?;
+    gpu.fill_canvas(fb.as_mut(), &canvas, Some(up));
+    cpu.irq(IrqCmd::Irq1);
+
+    // Down Frame
+    clocks = cpu_run_till(cpu, clocks, expected_clocks + CLOCKS_PER_HALF_FRAME)?;
+    gpu.fill_canvas(fb.as_mut(), &canvas, Some(down));
+    cpu.irq(IrqCmd::Irq2);
+    Ok(clocks)
 }
 
 impl From<Key> for DirectKey {
@@ -206,6 +232,12 @@ impl WindowKey for DirectKey {
 
     fn active(&self) -> bool {
         self.last.into()
+    }
+
+    fn change_state(&mut self, val: bool) -> bool {
+        let old = self.last;
+        self.last = val.into();
+        old != self.last
     }
 }
 
@@ -238,6 +270,15 @@ impl<K: WindowKey> WindowKey for FlipFlopKey<K> {
     fn active(&self) -> bool {
         self.flip_flop.state
     }
+
+    fn change_state(&mut self, val: bool) -> bool {
+        if val != self.flip_flop.state {
+            self.flip_flop.change();
+            true
+        } else {
+            false
+        }
+    }
 }
 
 struct ActiveKey<K: WindowKey, F: Fn(bool)> {
@@ -251,13 +292,27 @@ impl<K: WindowKey, F: Fn(bool)> WindowKey for ActiveKey<K, F> {
     fn update(&mut self, window: &Window) -> bool {
         let changed = self.key.update(window);
         if changed {
-            self.action.call((self.active(), ));
+            self.call_action();
         }
         changed
     }
 
     fn active(&self) -> bool {
         self.key.active()
+    }
+
+    fn change_state(&mut self, val: bool) -> bool {
+        let changed = self.key.change_state(val);
+        if changed {
+            self.call_action();
+        }
+        changed
+    }
+}
+
+impl<K: WindowKey, F: Fn(bool)> ActiveKey<K, F> {
+    fn call_action(&self) {
+        self.action.call((self.active(), ));
     }
 }
 
