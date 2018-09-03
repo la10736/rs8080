@@ -12,6 +12,8 @@
   - [x] Pause at frame
   - [x] Step one or more frame
   - [ ] Memory watcher
+    * _Lives is at 0x21ff_
+    - [ ] Maps memory near lives and find what indicate that ship is destroyed
 - [ ] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
 - [ ] Implement sync
