@@ -101,7 +101,7 @@ fn main() {
 
     let mmu = SIMmu::new(rom.into(), vram.as_mut_ptr().into());
 
-    let io = Rc::new(IO::default().change_lives(5));
+    let io = Rc::new(IO::default().change_lives(4));
 
     let mut cpu = Cpu::new(mmu, io.clone(), io.clone());
     let gpu = Gpu::new(W, H, vram.as_ptr());

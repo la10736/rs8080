@@ -221,11 +221,15 @@ impl Debug for MemoryError {
 pub trait Mmu {
     fn read_byte(&self, address: Address) -> Result<Byte>;
 
-    fn write_byte(&mut self, address: Address, val: u8) -> Result<()>;
+    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()>;
 
     fn dump(&self) -> String;
 
-    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte>;
+    fn replace_byte(&mut self, address: Address, val: Byte) -> Result<Byte> {
+        let old = self.read_byte(address)?;
+        self.write_byte(address, val)?;
+        Ok(old)
+    }
 
     fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) -> Result<()> {
         data.as_ref().iter().enumerate().map(
@@ -262,10 +266,6 @@ impl Mmu for PlainMemory {
 
     fn dump(&self) -> String {
         str_memory(&self.bank, 0x0, DUMP_MEMORY_COLUMNS)
-    }
-
-    fn ref_mut(&mut self, address: Address) -> Result<&mut Byte> {
-        Ok(&mut self.bank[address as usize])
     }
 }
 
@@ -652,13 +652,13 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     pub fn dump_memory(&self) -> String {
-        self.mmu.dump()
+        self.dump()
     }
 
     pub fn dump_stack(&self) -> String {
         let address = self.state.sp.val;
         format!("0x{:04x} => ", address) + &match (address..0x2400)
-            .map(|a| self.mmu.read_byte(a))
+            .map(|a| self.read_byte(a))
             .map( |e| e.map(|v| format!("{:02x}", v)))
             .collect::<Result<Vec<_>>>() {
             Ok(vals) => vals.join(" "),
@@ -675,7 +675,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Iterator for Cpu<M, O, I> {
     type Item = Result<Byte>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
-        let data = self.mmu.read_byte(self.state.pc.val);
+        let data = self.read_byte(self.state.pc.val);
         self.state.pc.overflow_add(0x01);
         Some(data)
     }
@@ -694,7 +694,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 E => self.state.e,
                 H => self.state.h,
                 L => self.state.l,
-                M => self.mmu.read_byte(self.hl().val)?.into(),
+                M => self.read_byte(self.hl().val)?.into(),
             }
         )
     }
@@ -791,12 +791,12 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn get_m(&self) -> Result<RegByte> {
         let address = self.hl().val;
-        self.mmu.read_byte(address).map(|v| v.into())
+        self.read_byte(address).map(|v| v.into())
     }
 
     fn set_m<W: Into<Byte>>(&mut self, val: W) -> Result<()> {
         let address = self.hl().val;
-        self.mmu.write_byte(address, val.into())
+        self.write_byte(address, val.into())
     }
 
     fn fix_static_flags(&mut self, r: Reg) -> Result<()> {
@@ -805,7 +805,8 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn push_val(&mut self, val: Byte) -> Result<()> {
         self.state.sp.overflow_sub(1);
-        self.mmu.write_byte(self.state.sp.into(), val)
+        let address = self.state.sp.into();
+        self.write_byte(address, val)
     }
 
     fn push_addr(&mut self, address: Address) -> Result<()> {
@@ -824,7 +825,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn pop_val(&mut self) -> Result<Byte> {
-        let val = self.mmu.read_byte(self.state.sp.into())?;
+        let val = self.read_byte(self.state.sp.into())?;
         self.state.sp.overflow_add(1);
         Ok(val)
     }
@@ -982,13 +983,14 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn stax(&mut self, rp: RegPair) -> Periods {
         let address = self.address(rp);
-        self.mmu.write_byte(address, self.state.a.into());
+        let val = self.state.a.into();
+        self.write_byte(address, val);
         7
     }
 
     fn ldax(&mut self, rp: RegPair) -> Result<Periods> {
         let address = self.address(rp);
-        self.state.a = self.mmu.read_byte(address)?.into();
+        self.state.a = self.read_byte(address)?.into();
         Ok(7)
     }
 }
@@ -1250,17 +1252,19 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         5
     }
 
+    fn xthl(&mut self) -> Result<Periods> {
+        let sp = self.state.sp.into();
+        let l = self.state.l.val;
+        self.state.l = self.replace_byte(sp, l)?.into();
+        let h = self.state.h.val;
+        self.state.h = self.replace_byte(sp + 1, h)?.into();
+        Ok(18)
+    }
+
     fn xchg(&mut self) -> Periods {
         swap(&mut self.state.d, &mut self.state.h);
         swap(&mut self.state.e, &mut self.state.l);
         4
-    }
-
-    fn xthl(&mut self) -> Result<Periods> {
-        let sp = self.state.sp.into();
-        swap(self.mmu.ref_mut(sp)?, &mut self.state.l.val);
-        swap(self.mmu.ref_mut(sp + 1)?, &mut self.state.h.val);
-        Ok(18)
     }
 
     fn sphl(&mut self) -> Periods {
@@ -1273,24 +1277,26 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn sta(&mut self, address: Address) -> Periods {
         let value = self.state.a.val;
-        self.mmu.write_byte(address, value);
+        self.write_byte(address, value);
         13
     }
 
     fn lda(&mut self, address: Address) -> Result<Periods> {
-        self.state.a = self.mmu.read_byte(address)?.into();
+        self.state.a = self.read_byte(address)?.into();
         Ok(13)
     }
 
     fn shld(&mut self, address: Address) -> Result<Periods> {
-        self.mmu.write_byte(address, self.state.l.val)?;
-        self.mmu.write_byte(address + 1, self.state.h.val)?;
+        let i = self.state.l.val;
+        self.write_byte(address, i)?;
+        let h = self.state.h.val;
+        self.write_byte(address + 1, h)?;
         Ok(16)
     }
 
     fn lhld(&mut self, address: Address) -> Result<Periods> {
-        self.state.l = self.mmu.read_byte(address)?.into();
-        self.state.h = self.mmu.read_byte(address + 1)?.into();
+        self.state.l = self.read_byte(address)?.into();
+        self.state.h = self.read_byte(address + 1)?.into();
         Ok(16)
     }
 }
@@ -1308,6 +1314,21 @@ impl Into<(Flag, bool)> for CondFlag {
             PE => (Parity, true),
             PO => (Parity, false),
         }
+    }
+}
+
+
+impl<M: Mmu, O: OutputBus, I: InputBus> Mmu for Cpu<M, O, I> {
+    fn read_byte(&self, address: u16) -> Result<u8> {
+        self.mmu.read_byte(address)
+    }
+
+    fn write_byte(&mut self, address: u16, val: u8) -> Result<()> {
+        self.mmu.write_byte(address, val)
+    }
+
+    fn dump(&self) -> String {
+        self.mmu.dump()
     }
 }
 
