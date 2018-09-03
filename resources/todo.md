@@ -1,9 +1,18 @@
 # TODO
 
-- [X] Dump Stack
-- [X] Register and dump last opcodes
-- [ ] Find bug that mess stack
-- [ ] Try Release Performance
+- [x] Dump Stack
+- [x] Register and dump last opcodes
+- [x] Find bug that mess stack
+- [x] Try Release Performance
+- [x] Implement Buttons Base
+- [ ] Some debugging options
+  - [x] Pause
+  - [x] Dump logs
+  - [x] Frame Count
+  - [x] Pause at frame
+  - [x] Step one or more frame
+  - [ ] Memory watcher
+- [ ] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
 - [ ] Implement sync
 - [ ] Implement Buttons
@@ -11,11 +20,11 @@
 - [ ] Command Line Interface
 - [ ] Rotate screen
 - [ ] Scale screen
-- [ ] Extract MMU from Cpu
+- [ ] Extract MMU module from Cpu
 - [ ] Profile and optimize
 - [ ] RsTest should raise errors
 - [ ] Save state and memory
 - [ ] Recover from saved state
 - [ ] Clear all warning
 - [ ] Multithreading Cpu/Gpu
-- [ ] Vram as remote (send write command)
+- [ ] Vram as remote (send write command mirroring)

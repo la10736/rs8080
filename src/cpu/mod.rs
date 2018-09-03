@@ -1,7 +1,7 @@
 use ::std::mem::swap;
 use self::Flag::*;
 use super::{
-    Address, Byte, Word,
+    Address, Byte,
     asm::{BytePair, Instruction, Instruction::*,
           Reg, RegPair, RegPairValue, CondFlag, IrqAddr},
     registers::*,
@@ -226,16 +226,6 @@ pub trait Mmu {
     fn dump(&self) -> String;
 
     fn ref_mut(&mut self, address: Address) -> Result<&mut Byte>;
-
-    fn read_word(&self, address: Address) -> Result<Word> {
-        Ok(((self.read_byte(address)? as u16) << 8) | (self.read_byte(address + 1)? as u16))
-    }
-
-    fn write_word(&mut self, address: Address, val: Word) -> Result<()> {
-        self.write_byte(address, (val >> 8) as Byte)?;
-        self.write_byte(address + 1, (val & 0xff) as Byte)?;
-        Ok(())
-    }
 
     fn write<A: AsRef<[u8]>>(&mut self, address: Address, data: A) -> Result<()> {
         data.as_ref().iter().enumerate().map(
