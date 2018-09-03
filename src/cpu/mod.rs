@@ -1320,10 +1320,17 @@ impl Into<(Flag, bool)> for CondFlag {
 
 impl<M: Mmu, O: OutputBus, I: InputBus> Mmu for Cpu<M, O, I> {
     fn read_byte(&self, address: u16) -> Result<u8> {
-        self.mmu.read_byte(address)
+        let res = self.mmu.read_byte(address)?;
+        if address == 0x21ff {
+            println!("Read Access from 0x{:04x} [0x{:02x}] <{}>", address, res, self.dump_state());
+        }
+        Ok(res)
     }
 
     fn write_byte(&mut self, address: u16, val: u8) -> Result<()> {
+        if address == 0x21ff {
+            println!("Write Access to 0x{:04x} [0x{:02x}] <{}>", address, val, self.dump_state());
+        }
         self.mmu.write_byte(address, val)
     }
 
