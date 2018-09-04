@@ -1,7 +1,7 @@
 * 0x21ff Number of ship remained
 * 0x2100 -- 0x2136 Enemy live state
 * 0x2100 -- 0x2300 Doesn't contain ship hit info
-
+* 0x2080 contains a value that cycle from 0 to 2
 
 
 ## Notes

@@ -124,7 +124,7 @@ fn main() {
     let mut clocks: u64 = 0;
     let (tx, rx) = std::sync::mpsc::channel();
 
-    let mut pause_in_frames = Some(760);
+    let mut pause_in_frames = Some(765);
 
     let mut pause = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::P)),

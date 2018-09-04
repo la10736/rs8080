@@ -431,7 +431,8 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         let op = opcode(self)?;
         debug!("State: {:?} | Exec: {}", self.state, op);
         self.op_code_history.store(pc, self.state.clone(), op);
-        self.exec(op)
+        let r = self.exec(op)?;
+        Ok(r)
     }
 
     pub fn exec(&mut self, instruction: Instruction) -> Result<Periods> {
@@ -1317,22 +1318,25 @@ impl Into<(Flag, bool)> for CondFlag {
     }
 }
 
-fn interesting_address(address: u16) -> bool {
-    address >= 0x2080 && address < 0x2100 && ![0x20c0, 0x2094].contains(&address)
+impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+    fn interesting_address(&self, address: u16) -> bool {
+//        address >= 0x2000 && address < 0x2400 && ![].contains(&address) && address < self.sp()
+        address == 0x2094
+    }
 }
 
 
 impl<M: Mmu, O: OutputBus, I: InputBus> Mmu for Cpu<M, O, I> {
     fn read_byte(&self, address: u16) -> Result<u8> {
         let res = self.mmu.read_byte(address)?;
-        if interesting_address(address) {
+        if self.interesting_address(address) {
             println!("Read Access from 0x{:04x} [0x{:02x}] <{}>", address, res, self.dump_state());
         }
         Ok(res)
     }
 
     fn write_byte(&mut self, address: u16, val: u8) -> Result<()> {
-        if interesting_address(address) {
+        if self.interesting_address(address) {
             println!("Write Access to 0x{:04x} [0x{:02x}] <{}>", address, val, self.dump_state());
         }
         self.mmu.write_byte(address, val)
