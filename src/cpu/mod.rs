@@ -1317,18 +1317,22 @@ impl Into<(Flag, bool)> for CondFlag {
     }
 }
 
+fn interesting_address(address: u16) -> bool {
+    address >= 0x2080 && address < 0x2100 && ![0x20c0, 0x2094].contains(&address)
+}
+
 
 impl<M: Mmu, O: OutputBus, I: InputBus> Mmu for Cpu<M, O, I> {
     fn read_byte(&self, address: u16) -> Result<u8> {
         let res = self.mmu.read_byte(address)?;
-        if address == 0x21ff {
+        if interesting_address(address) {
             println!("Read Access from 0x{:04x} [0x{:02x}] <{}>", address, res, self.dump_state());
         }
         Ok(res)
     }
 
     fn write_byte(&mut self, address: u16, val: u8) -> Result<()> {
-        if address == 0x21ff {
+        if interesting_address(address) {
             println!("Write Access to 0x{:04x} [0x{:02x}] <{}>", address, val, self.dump_state());
         }
         self.mmu.write_byte(address, val)

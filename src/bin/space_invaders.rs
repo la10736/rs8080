@@ -144,7 +144,7 @@ fn main() {
             },
         }) as Box<WindowKey>
     ).collect();
-    let mut should_print_frame = false;
+    let mut should_print_frame = true;
     let mut print_frame = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::F)),
         action: {
