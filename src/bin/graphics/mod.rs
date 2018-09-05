@@ -140,6 +140,21 @@ impl Rect {
             height: self.height - h,
         })
     }
+
+    pub fn split_vertical(&self, w: usize) -> (Rect, Rect) {
+        assert!(w <= self.width);
+        (Rect {
+            x: self.x,
+            y: self.y,
+            width: w,
+            height: self.height,
+        }, Rect {
+            x: self.x + w,
+            y: self.y,
+            width: self.width - w,
+            height: self.height,
+        })
+    }
 }
 
 pub struct Canvas {

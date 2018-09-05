@@ -24,8 +24,9 @@
 - [ ] Implement Buttons
 - [ ] Implement Game options
 - [ ] Command Line Interface
-- [ ] Rotate screen
-- [ ] Scale screen
+- [x] Rotate screen
+- [x] Scale screen
+- [ ] Review rotation logic: it's a mess
 - [ ] Extract MMU module from Cpu
 - [ ] Profile and optimize
 - [ ] RsTest should raise errors

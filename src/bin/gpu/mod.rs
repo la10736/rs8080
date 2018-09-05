@@ -16,7 +16,7 @@ impl Gpu {
 
     pub fn fill_canvas(&self, buffer: &mut [u32], canvas: &Canvas, rect: Option<Rect>) {
         let rect = rect.unwrap_or(canvas.into());
-        let inner = canvas.centered_rect(self.width, self.height);
+        let inner = canvas.centered_rect(self.height, self.width);
         for r in rect.y..(rect.y + rect.height) {
             for c in rect.x..(rect.x + rect.width) {
                 let point = (c, r).into();
@@ -41,8 +41,9 @@ impl Gpu {
     }
 
     fn get(&self, point: Point) -> bool {
-        let pos = point.x / 8 + point.y * self.width / 8;
-        let bit = point.x % 8;
+        let (x, y) = ((self.width - point.y), point.x);
+        let pos = x / 8 + y * self.width / 8;
+        let bit = x % 8;
         let data = self.mem(pos);
 
         data & (0x01 << bit) != 0

@@ -8,7 +8,7 @@ extern crate simple_logger;
 #[cfg(test)]
 extern crate rstest;
 
-use minifb::{Key, WindowOptions, Window};
+use minifb::{Key, WindowOptions, Window, Scale};
 
 use std::path::Path;
 use std::fs::File;
@@ -106,13 +106,18 @@ fn main() {
     let mut cpu = Cpu::new(mmu, io.clone(), io.clone());
     let gpu = Gpu::new(W, H, vram.as_ptr());
 
-    let w = W + 2 * W_MARGIN;
-    let h = H + 2 * H_MARGIN;
+    let w = H + 2 * H_MARGIN;
+    let h = W + 2 * W_MARGIN;
 
     let mut window = Window::new("Space Invaders - ESC to exit",
                                  w,
                                  h,
-                                 WindowOptions::default()).unwrap_or_else(|e| {
+                                 WindowOptions {
+                                     borderless: true,
+                                     title: true,
+                                     resize: false,
+                                     scale: Scale::FitScreen,
+                                 }).unwrap_or_else(|e| {
         panic!("{}", e);
     });
     let mut fb = vec![0; w * h];
@@ -227,16 +232,16 @@ fn next_frame(cpu: &mut Cpu, gpu: &Gpu, w: usize, h: usize, fb: &mut Vec<u32>,
         fg: WHITE,
         bg: BLACK,
     };
-    let (up, down) = Rect::from(&canvas).split_horizontal(h / 2);
+    let (left, right) = Rect::from(&canvas).split_vertical(w / 2);
 
     // Up Frame
     clocks = cpu_run_till(cpu, clocks, expected_clocks)?;
-    gpu.fill_canvas(fb.as_mut(), &canvas, Some(up));
+    gpu.fill_canvas(fb.as_mut(), &canvas, Some(left));
     cpu.irq(IrqCmd::Irq1);
 
     // Down Frame
     clocks = cpu_run_till(cpu, clocks, expected_clocks + CLOCKS_PER_HALF_FRAME)?;
-    gpu.fill_canvas(fb.as_mut(), &canvas, Some(down));
+    gpu.fill_canvas(fb.as_mut(), &canvas, Some(right));
     cpu.irq(IrqCmd::Irq2);
     Ok(clocks)
 }
