@@ -5,7 +5,7 @@
 - [x] Find bug that mess stack
 - [x] Try Release Performance
 - [x] Implement Buttons Base
-- [ ] Some debugging options
+- [x] Some debugging options
   - [x] Pause
   - [x] Dump logs
   - [x] Frame Count
@@ -13,7 +13,8 @@
   - [x] Step one or more frame
   - [x] Memory watcher
     - [x] Maps memory near lives and find what indicate that ship is destroyed
-- [ ] Fix tests
+- [x] Fix tests
+- [ ] Generalize Call hook, implement default empty hook and hook for test rom
 - [ ] Clean up code
 - [ ] Remove vram memory read access
 - [ ] Remove mirror memory read access
