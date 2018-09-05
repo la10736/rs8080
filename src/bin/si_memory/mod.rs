@@ -185,9 +185,9 @@ const MIRROR_DEFAULT: Byte = 0xDE;
 
 impl Mmu for Mirror {
     fn read_byte(&self, address: Address) -> Result<Byte> {
-//        CpuError::memory_read(address)
+        //CpuError::memory_read(address)
         error!("Try to read in mirror 0x{:04x}", address);
-        Ok(0x00)
+        Ok(MIRROR_DEFAULT)
     }
 
     fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
@@ -347,8 +347,18 @@ mod test {
         case(0x5420, 0xA5),
         case(0xFFFF, 0x1A),
         )]
-        fn write_error(mut zmem: SIMmu, address: Address, value: Byte) {
-            assert!(zmem.write_byte(address, value).is_err());
+        fn read_should_return_mirror_default(mut zmem: SIMmu, address: Address, value: Byte) {
+            assert_eq!(Ok(MIRROR_DEFAULT), zmem.read_byte(address));
+        }
+
+        #[rstest_parametrize(
+        address, value,
+        case(0x4000, 0xE1),
+        case(0x5420, 0xA5),
+        case(0xFFFF, 0x1A),
+        )]
+        fn write_should_ignore(mut zmem: SIMmu, address: Address, value: Byte) {
+            assert!(zmem.write_byte(address, value).is_ok());
         }
     }
 }

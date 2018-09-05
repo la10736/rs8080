@@ -781,9 +781,8 @@ mod data_transfer {
     case(Unwrap("RegPair::HL")),
     case(Unwrap("RegPair::SP")),
     )]
-    #[should_panic]
-    fn stax_should_panic(mut cpu: Cpu, reg_pair: RegPair) {
-        cpu.exec(Stax(reg_pair));
+    fn stax_should_return_error(mut cpu: Cpu, reg_pair: RegPair) {
+        assert!(cpu.exec(Stax(reg_pair)).is_err());
     }
 
     #[rstest]
@@ -803,9 +802,8 @@ mod data_transfer {
     case(Unwrap("RegPair::HL")),
     case(Unwrap("RegPair::SP")),
     )]
-    #[should_panic]
-    fn ldax_should_panic(mut cpu: Cpu, reg_pair: RegPair) {
-        cpu.exec(Ldax(reg_pair));
+    fn ldax_should_return_error(mut cpu: Cpu, reg_pair: RegPair) {
+        assert!(cpu.exec(Ldax(reg_pair)).is_err());
     }
 }
 
@@ -983,8 +981,8 @@ mod accumulator {
     case(0x34, 0x34, true, false),
     case(0x10, 0x12, false, true),
     case(0x33, 0x32, false, false),
-    case(0x10, 0xff, false, false),
-    case(0x83, 0x00, false, true),
+    case(0x10, 0xff, false, true),
+    case(0x83, 0x00, false, false),
     )]
     fn compare_should(mut cpu: Cpu, a: Byte, v: Byte, zero: bool, carry: bool) {
         cpu.state.set_a(a);
@@ -999,9 +997,11 @@ mod accumulator {
     #[rstest_parametrize(
     a, init, cmd, carry,
     case(0x10, Unwrap("RegValue::B(0x12)"), Unwrap("Cmp(Reg::B)"), true),
-    case(0x10, Unwrap("RegValue::E(0xff)"), Unwrap("Cmp(Reg::E)"), false),
+    case(0x10, Unwrap("RegValue::E(0x0f)"), Unwrap("Cmp(Reg::E)"), false),
+    case(0x10, Unwrap("RegValue::B(0x82)"), Unwrap("Cmp(Reg::B)"), true),
     case(0x10, Unwrap("()"), Unwrap("Cpi(0x12)"), true),
-    case(0x10, Unwrap("()"), Unwrap("Cpi(0xff)"), false),
+    case(0x10, Unwrap("()"), Unwrap("Cpi(0x0f)"), false),
+    case(0x10, Unwrap("()"), Unwrap("Cpi(0x82)"), true),
     )]
     fn compare_ops<I: ApplyState>(mut cpu: Cpu, a: Byte, init: I, cmd: Instruction, carry: bool) {
         cpu.state.set_a(a);
