@@ -11,8 +11,13 @@
   - [x] Frame Count
   - [x] Pause at frame
   - [x] Step one or more frame
-  - [ ] Memory watcher
-    - [ ] Maps memory near lives and find what indicate that ship is destroyed
+  - [x] Memory watcher
+    - [x] Maps memory near lives and find what indicate that ship is destroyed
+- [ ] Fix tests
+- [ ] Clean up code
+- [ ] Remove vram memory read access
+- [ ] Remove mirror memory read access
+- [ ] Just some log for lower mirror address
 - [ ] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
 - [ ] Implement sync

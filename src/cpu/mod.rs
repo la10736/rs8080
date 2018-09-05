@@ -190,8 +190,8 @@ impl State {
 }
 
 #[derive(Clone)]
-struct PlainMemory {
-    bank: [u8; 0x10000]
+pub struct PlainMemory {
+    pub bank: [u8; 0x10000]
 }
 
 impl Default for PlainMemory {
@@ -619,7 +619,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 Ok(self.halt())
             }
             Stax(_) | Ldax(_) | Rim | Sim =>
-                unimplemented!("Instruction {:?} should not exist!", instruction)
+                Err(CpuError::InvalidCode(format!("Instruction {:?} should not exist!", instruction)))
         }
     }
 
@@ -631,6 +631,10 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     pub fn pc(&self) -> Address {
         self.state.pc.into()
+    }
+
+    pub fn set_pc(&mut self, address: Address) {
+        self.state.pc = address.into()
     }
 
     pub fn sp(&self) -> Address {
@@ -975,7 +979,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn mov(&mut self, f: Reg, t: Reg) -> Result<Periods> {
         let orig = self.reg(f)?;
-        self.reg_apply(t, |dest| { *dest = orig; });
+        self.reg_apply(t, |dest| { *dest = orig; })?;
         Ok(match (f, t) {
             (Reg::M, _) | (_, Reg::M) => 7,
             _ => 5
@@ -1137,9 +1141,6 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         let inverse = old.sign_bit() != other.sign_bit();
         self.accumulator_sub(other.into());
         self.state.a = old;
-        if inverse {
-            self.state.flags.toggle(Carry);
-        }
     }
 }
 
@@ -1318,27 +1319,13 @@ impl Into<(Flag, bool)> for CondFlag {
     }
 }
 
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn interesting_address(&self, address: u16) -> bool {
-//        address >= 0x2000 && address < 0x2400 && ![].contains(&address) && address < self.sp()
-        address == 0x2094
-    }
-}
-
-
 impl<M: Mmu, O: OutputBus, I: InputBus> Mmu for Cpu<M, O, I> {
     fn read_byte(&self, address: u16) -> Result<u8> {
         let res = self.mmu.read_byte(address)?;
-        if self.interesting_address(address) {
-            println!("Read Access from 0x{:04x} [0x{:02x}] <{}>", address, res, self.dump_state());
-        }
         Ok(res)
     }
 
     fn write_byte(&mut self, address: u16, val: u8) -> Result<()> {
-        if self.interesting_address(address) {
-            println!("Write Access to 0x{:04x} [0x{:02x}] <{}>", address, val, self.dump_state());
-        }
         self.mmu.write_byte(address, val)
     }
 
@@ -1367,9 +1354,29 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn call(&mut self, address: Address) -> Periods {
-        let addr = self.state.pc.into();
-        self.push_addr(addr);
-        self.jump(address);
+        if address == 0x0005 {
+            let c_reg = self.state.c.val;
+            if c_reg == 0x9 {
+                let mut offset = (self.state.d.val as Address) << 8 | (self.state.e.val as Address) + 3;
+                while let Ok(c) = self.read_byte(offset) {
+                    let c = c as char;
+                    if c == '$' {
+                        break;
+                    }
+                    print!("{}", c);
+                    offset += 1;
+                }
+                println!("||||");
+            } else if c_reg == 2 {
+                println!("Print char routine called");
+            }
+        } else if address == 0 {
+            panic!("Test Done")
+        } else {
+            let addr = self.state.pc.into();
+            self.push_addr(addr);
+            self.jump(address);
+        }
         17
     }
 

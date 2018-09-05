@@ -152,6 +152,8 @@ impl Mmu for VRam {
         };
         debug!("Read Vram [0x{:04x}]=0x{:02x}", address, val);
         Ok(val)
+//        error!("Try to read in vram 0x{:04x}", address);
+//        CpuError::memory_read(address)
     }
 
     fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
@@ -183,11 +185,15 @@ const MIRROR_DEFAULT: Byte = 0xDE;
 
 impl Mmu for Mirror {
     fn read_byte(&self, address: Address) -> Result<Byte> {
-        CpuError::memory_read(address)
+//        CpuError::memory_read(address)
+        error!("Try to read in mirror 0x{:04x}", address);
+        Ok(0x00)
     }
 
     fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
-        CpuError::memory_write(address, val)
+        error!("Try to write in mirror 0x{:04x}", address);
+        //CpuError::memory_write(address, val)
+        Ok(())
     }
 
     fn dump(&self) -> String {
