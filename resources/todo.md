@@ -14,9 +14,10 @@
   - [x] Memory watcher
     - [x] Maps memory near lives and find what indicate that ship is destroyed
 - [x] Fix tests
+- [ ] Clear all warning (binaries)
 - [ ] Generalize Call hook, implement default empty hook and hook for test rom
 - [ ] Clean up code
-- [ ] Remove vram memory read access
+- [ ] Remove vram memory read access (it's happen just in lower segment and in attractive mode)
 - [ ] Remove mirror memory read access
 - [ ] Just some log for lower mirror address
 - [ ] Play a valid game
@@ -30,9 +31,9 @@
 - [ ] Review rotation logic: it's a mess
 - [ ] Extract MMU module from Cpu
 - [ ] Profile and optimize
-- [ ] RsTest should raise errors
+- [ ] Clear all warning (tests)
+  - [ ] RsTest should accept tests that raise errors
 - [ ] Save state and memory
 - [ ] Recover from saved state
-- [ ] Clear all warning
 - [ ] Multithreading Cpu/Gpu
 - [ ] Vram as remote (send write command mirroring)

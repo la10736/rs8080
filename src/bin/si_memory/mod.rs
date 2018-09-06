@@ -4,7 +4,6 @@ use rs8080::Byte;
 use std::ptr;
 
 use rs8080::cpu::Result;
-use std::result::Result as StdResult;
 use rs8080::cpu::CpuError;
 use rs8080::cpu::{str_memory, DUMP_MEMORY_COLUMNS};
 

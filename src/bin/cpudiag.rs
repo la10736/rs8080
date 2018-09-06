@@ -12,17 +12,17 @@ use std::fs::File;
 use std::rc::Rc;
 
 use std::io::Read;
-use si_io::IO;
 use rs8080::cpu::Cpu as Cpu8080;
-use rs8080::cpu::{CpuError, IrqCmd};
+use rs8080::cpu::{CpuError};
 use std::time;
 use rs8080::cpu::PlainMemory;
 use rs8080::cpu::Mmu;
+use rs8080::io_bus::VoidIO;
 
 mod si_memory;
 mod si_io;
 
-type Cpu = Cpu8080<PlainMemory, Rc<IO>, Rc<IO>>;
+type Cpu = Cpu8080<PlainMemory, Rc<VoidIO>, Rc<VoidIO>>;
 
 const CLOCK: u64 = 2_000_000;
 
@@ -41,7 +41,7 @@ fn main() {
 
 
 
-    let io = Rc::new(IO::default());
+    let io = Rc::new(VoidIO::default());
 
     let mut cpu = Cpu::new(mmu, io.clone(), io.clone());
     cpu.set_pc(0x100);
@@ -55,8 +55,6 @@ fn main() {
             Err(e) => critical(&cpu, e)
         } as u64;
     }
-
-    info!("Test Done");
 }
 
 fn critical(cpu: &Cpu, e: CpuError) -> ! {

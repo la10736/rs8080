@@ -87,6 +87,7 @@ impl Flags {
         self.val(f, true)
     }
 
+    #[allow(dead_code)]
     fn clear(&mut self, f: Flag) {
         self.val(f, false)
     }
@@ -96,6 +97,7 @@ impl Flags {
         self.val(f, toggled)
     }
 
+    #[allow(dead_code)]
     fn clear_all(&mut self) {
         self.0 = 0x0
     }
@@ -143,6 +145,7 @@ enum Flag {
     Carry,
 }
 
+#[allow(dead_code)]
 impl State {
     fn set_a(&mut self, v: Byte) {
         self.a = v.into();
@@ -339,7 +342,7 @@ impl OpCodesHistory {
 impl Display for OpCodesHistory {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         for (pos, (pc, state, op)) in self.buffer.iter().rev().enumerate() {
-            write!(f, "   [{}] [0x{:04x}] - {} | {:?}\n", pos, pc, op, state);
+            write!(f, "   [{:8}] [0x{:04x}] - {:15} | {:?}\n", pos, pc, op, state)?;
         }
         Ok(())
     }
@@ -457,7 +460,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 self.dcr(r)
             }
             Cma => {
-                Ok(self.cma())
+                self.cma()
             }
             Daa => {
                 self.daa()
@@ -538,7 +541,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 Ok(self.lxi(rp))
             }
             Mvi(r, val) => {
-                Ok(self.mvi(r, val))
+                self.mvi(r, val)
             }
             Adi(val) => {
                 Ok(self.adi(val))
@@ -623,10 +626,10 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         }
     }
 
-    pub fn irq(&mut self, cmd: IrqCmd) {
+    pub fn irq(&mut self, cmd: IrqCmd) -> Result<Periods>{
         self.interrupt_enabled = false;
         self.run_state = CpuState::Running;
-        self.apply(cmd.into());
+        self.apply(cmd.into())
     }
 
     pub fn pc(&self) -> Address {
@@ -667,12 +670,16 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
             .map( |e| e.map(|v| format!("{:02x}", v)))
             .collect::<Result<Vec<_>>>() {
             Ok(vals) => vals.join(" "),
-            Err(e) => format!("Invalid stack address 0x{:04x}", address)
+            Err(_) => format!("Invalid stack address 0x{:04x}", address)
         }
     }
 
     pub fn dump_opcodes(&self) -> String {
         format!("Code:\n{}", self.op_code_history)
+    }
+
+    pub fn clear_history(&mut self) {
+        self.op_code_history.clear()
     }
 }
 
@@ -699,7 +706,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 E => self.state.e,
                 H => self.state.h,
                 L => self.state.l,
-                M => self.read_byte(self.hl().val)?.into(),
+                M => self.get_m()?,
             }
         )
     }
@@ -724,8 +731,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn reg_apply<F: FnMut(&mut RegByte)>(&mut self, r: self::Reg, mut f: F) -> Result<()> {
         let mut val = self.reg(r)?;
         f(&mut val);
-        self.reg_set(r, val);
-        Ok(())
+        self.reg_set(r, val)
     }
 
     fn reg_address(&self, r: self::RegPair) -> RegAddress {
@@ -824,9 +830,9 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         self.push_val(val)
     }
 
-    fn push_flags(&mut self) {
+    fn push_flags(&mut self) -> Result<()> {
         let val = self.state.pack_flags();
-        self.push_val(val);
+        self.push_val(val)
     }
 
     fn pop_val(&mut self) -> Result<Byte> {
@@ -891,12 +897,13 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         10
     }
 
-    fn mvi(&mut self, r: Reg, val: Byte) -> Periods {
-        self.reg_set(r, val);
-        match r {
-            Reg::M => 10,
-            _ => 7
-        }
+    fn mvi(&mut self, r: Reg, val: Byte) -> Result<Periods> {
+        self.reg_set(r, val).map(
+            |_| match r {
+                Reg::M => 10,
+                _ => 7
+            }
+        )
     }
 
     fn adi(&mut self, val: Byte) -> Periods {
@@ -929,9 +936,9 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
 /// Single Register Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn cma(&mut self) -> Periods {
-        self.reg_apply(self::Reg::A, |r| r.one_complement());
-        4
+    fn cma(&mut self) -> Result<Periods> {
+        self.reg_apply(self::Reg::A, |r| r.one_complement())
+            .map(|_| 4)
     }
 
     fn inr(&mut self, reg: self::Reg) -> Result<Periods> {
@@ -1001,6 +1008,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Carry and AuxCarry
+#[allow(dead_code)]
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn carry(&self) -> bool {
         self.state.flag(Flag::Carry)
@@ -1138,7 +1146,6 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn compare(&mut self, other: RegByte) {
         let old = self.state.a;
-        let inverse = old.sign_bit() != other.sign_bit();
         self.accumulator_sub(other.into());
         self.state.a = old;
     }
