@@ -103,7 +103,7 @@ fn main() {
 
     let mmu = SIMmu::new(rom.into(), vram.as_mut_ptr().into());
 
-    let io = Rc::new(IO::default().change_lives(4));
+    let io = Rc::new(IO::default());
 
     let mut cpu = Cpu::new(mmu, io.clone(), io.clone());
     let gpu = Gpu::new(W, H, vram.as_ptr());
@@ -116,7 +116,7 @@ fn main() {
                                  h,
                                  WindowOptions {
                                      borderless: true,
-                                     title: true,
+                                     title: false,
                                      resize: false,
                                      scale: Scale::FitScreen,
                                  }).unwrap_or_else(|e| {
@@ -376,7 +376,7 @@ fn dump(cpu: &Cpu) {
 
 const W: usize = 256;
 const H: usize = 224;
-const W_MARGIN: usize = 20;
+const W_MARGIN: usize = 0;
 
 const H_MARGIN: usize = 20;
 
