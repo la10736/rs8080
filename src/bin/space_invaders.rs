@@ -145,7 +145,7 @@ fn main() {
             key: FlipFlopKey::from(DirectKey::from(key)),
             action: {
                 let tx = tx.clone();
-                move |_| { tx.send(Command::Step(s)); }
+                move |_| { tx.send(Command::Step(s)).unwrap(); }
             },
         }) as Box<WindowKey>
     ).collect();
@@ -154,7 +154,7 @@ fn main() {
         key: FlipFlopKey::from(DirectKey::from(Key::F)),
         action: {
             let tx = tx.clone();
-            move |state| { tx.send(Command::PrintFrames(state)); }
+            move |state| { tx.send(Command::PrintFrames(state)).unwrap(); }
         },
     });
     print_frame.change_state(should_print_frame);
@@ -205,7 +205,7 @@ fn main() {
             clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
                 .unwrap_or_else(|e| critical(&cpu, e));
 
-            window.update_with_buffer(&fb);
+            window.update_with_buffer(&fb).unwrap();
 
             if should_print_frame {
                 println!("Frame nr: {}", frames);
@@ -237,12 +237,12 @@ fn next_frame(cpu: &mut Cpu, gpu: &Gpu, w: usize, h: usize, fb: &mut Vec<u32>,
     // Up Frame
     clocks = cpu_run_till(cpu, clocks, expected_clocks)?;
     gpu.fill_canvas(fb.as_mut(), &canvas, Some(left));
-    cpu.irq(IrqCmd::Irq1);
+    cpu.irq(IrqCmd::Irq1)?;
 
     // Down Frame
     clocks = cpu_run_till(cpu, clocks, expected_clocks + CLOCKS_PER_HALF_FRAME)?;
     gpu.fill_canvas(fb.as_mut(), &canvas, Some(right));
-    cpu.irq(IrqCmd::Irq2);
+    cpu.irq(IrqCmd::Irq2)?;
     Ok(clocks)
 }
 

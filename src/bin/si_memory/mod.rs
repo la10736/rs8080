@@ -280,7 +280,7 @@ mod test {
         case(0x23FF, 0x1A),
         )]
         fn write_and_read(mut zmem: SIMmu, address: Address, value: Byte) {
-            zmem.write_byte(address, value);
+            zmem.write_byte(address, value).unwrap();
 
             assert_eq!(Ok(value), zmem.read_byte(address))
         }
@@ -331,7 +331,7 @@ mod test {
         )]
         fn write_and_read(mem: Context, address: Address, value: Byte) {
             let (mut mem, _) = mem;
-            mem.write_byte(address, value);
+            mem.write_byte(address, value).unwrap();
 
             assert_eq!(Ok(value), mem.read_byte(address))
         }
@@ -346,7 +346,7 @@ mod test {
         case(0x5420, 0xA5),
         case(0xFFFF, 0x1A),
         )]
-        fn read_should_return_mirror_default(mut zmem: SIMmu, address: Address) {
+        fn read_should_return_mirror_default(zmem: SIMmu, address: Address) {
             assert_eq!(Ok(MIRROR_DEFAULT), zmem.read_byte(address));
         }
 

@@ -19,7 +19,6 @@ use rs8080::cpu::Mmu;
 use rs8080::io_bus::VoidIO;
 
 mod si_memory;
-mod si_io;
 
 type Cpu = Cpu8080<PlainMemory, Rc<VoidIO>, Rc<VoidIO>>;
 
