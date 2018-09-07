@@ -15,16 +15,18 @@
     - [x] Maps memory near lives and find what indicate that ship is destroyed
 - [x] Fix tests
 - [ ] Clear all warning (binaries)
+- [ ] Replace `reg_apply()`
 - [ ] Generalize Call hook, implement default empty hook and hook for test rom
 - [ ] Clean up code
 - [ ] Remove vram memory read access (it's happen just in lower segment and in attractive mode)
 - [ ] Remove mirror memory read access
 - [ ] Just some log for lower mirror address
-- [ ] Play a valid game
+- [x] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
 - [ ] Implement sync
 - [ ] Implement Buttons
 - [ ] Implement Game options
+- [ ] Implement screen colors
 - [ ] Command Line Interface
 - [x] Rotate screen
 - [x] Scale screen

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod shift_register;
 
 use rs8080::io_bus::InputBus;
@@ -5,6 +7,8 @@ use std::cell::RefCell;
 use rs8080::io_bus::OutputBus;
 use rs8080::Byte;
 use self::shift_register::ShiftRegister;
+
+
 
 const PORT1: u8 = 0x01;
 const DEFAULT_PORT1: u8 = 0x01;

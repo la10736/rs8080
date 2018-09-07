@@ -32,21 +32,19 @@ const MIRROR_OFFSET: usize = 0x4000;
 
 pub struct Rom {
     data: [Byte; ROM_SIZE],
-    black_hole: Byte,
 }
 
 impl From<[Byte; ROM_SIZE]> for Rom {
     fn from(data: [u8; ROM_SIZE]) -> Self {
         Rom {
             data,
-            black_hole: 0,
         }
     }
 }
 
 impl Default for Rom {
     fn default() -> Self {
-        Rom { data: [0; ROM_SIZE], black_hole: 0x00 }
+        Rom { data: [0; ROM_SIZE] }
     }
 }
 
@@ -129,7 +127,7 @@ impl VRam {
 
 impl Default for VRam {
     fn default() -> Self {
-        VRam { ptr: ptr::null_mut() }
+        Self::new(ptr::null_mut())
     }
 }
 
@@ -168,7 +166,7 @@ impl Mmu for VRam {
 }
 
 #[derive(Default)]
-struct Mirror { black_hole: Byte }
+struct Mirror;
 
 impl MBank for Mirror {
     fn offset(&self) -> usize {
@@ -189,7 +187,7 @@ impl Mmu for Mirror {
         Ok(MIRROR_DEFAULT)
     }
 
-    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
+    fn write_byte(&mut self, address: Address, _val: Byte) -> Result<()> {
         error!("Try to write in mirror 0x{:04x}", address);
         //CpuError::memory_write(address, val)
         Ok(())
@@ -200,6 +198,7 @@ impl Mmu for Mirror {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct SIMmu {
     rom: Rom,
@@ -209,6 +208,7 @@ pub struct SIMmu {
 }
 
 impl SIMmu {
+    #[allow(dead_code)]
     pub fn new(rom: Rom, vram: VRam) -> SIMmu {
         SIMmu {
             rom,
@@ -262,7 +262,7 @@ Mirror:
 #[cfg(test)]
 mod test {
     use super::*;
-    use rstest::{rstest, rstest_parametrize};
+    use rstest::{rstest_parametrize};
     use rs8080::Address;
     use rs8080::Byte;
 
@@ -346,7 +346,7 @@ mod test {
         case(0x5420, 0xA5),
         case(0xFFFF, 0x1A),
         )]
-        fn read_should_return_mirror_default(mut zmem: SIMmu, address: Address, value: Byte) {
+        fn read_should_return_mirror_default(mut zmem: SIMmu, address: Address) {
             assert_eq!(Ok(MIRROR_DEFAULT), zmem.read_byte(address));
         }
 

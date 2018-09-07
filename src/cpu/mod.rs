@@ -472,7 +472,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 self.mov(f, t)
             }
             Stax(rp) if rp.is_basic() => {
-                Ok(self.stax(rp))
+                self.stax(rp)
             }
             Ldax(rp) if rp.is_basic() => {
                 self.ldax(rp)
@@ -514,10 +514,10 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 Ok(self.rar())
             }
             Push(bp) => {
-                Ok(self.push(bp))
+                self.push(bp)
             }
             Pop(bp) => {
-                Ok(self.pop(bp))
+                self.pop(bp)
             }
             Dad(rp) => {
                 Ok(self.dad(rp))
@@ -556,19 +556,19 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 Ok(self.sbi(val))
             }
             Ani(val) => {
-                Ok(self.ani(val))
+                self.ani(val)
             }
             Xri(val) => {
-                Ok(self.xri(val))
+                self.xri(val)
             }
             Ori(val) => {
-                Ok(self.ori(val))
+                self.ori(val)
             }
             Cpi(val) => {
                 Ok(self.cpi(val))
             }
             Sta(address) => {
-                Ok(self.sta(address))
+                self.sta(address)
             }
             Lda(address) => {
                 self.lda(address)
@@ -590,21 +590,21 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
                 Ok(self.jump_conditionals(address, flag, expected))
             }
             Call(address) => {
-                Ok(self.call(address))
+                self.call(address)
             }
             C(cf, address) => {
                 let (flag, expected) = cf.into();
-                Ok(self.call_conditionals(address, flag, expected))
+                self.call_conditionals(address, flag, expected)
             }
             Ret => {
                 self.ret()
             }
             R(cf) => {
                 let (flag, expected) = cf.into();
-                Ok(self.ret_conditionals(flag, expected))
+                self.ret_conditionals(flag, expected)
             }
             Rst(irq) => {
-                Ok(self.rst(irq))
+                self.rst(irq)
             }
             Ei => {
                 Ok(self.ei())
@@ -942,8 +942,8 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn inr(&mut self, reg: self::Reg) -> Result<Periods> {
-        self.reg_apply(reg, |r| { r.increment(); });
-        self.fix_static_flags(reg);
+        self.reg_apply(reg, |r| { r.increment(); })?;
+        self.fix_static_flags(reg)?;
         let auxcarry = self.reg(reg)?.low() == 0x00;
         self.state.flags.val(AuxCarry, auxcarry);
         Ok(match reg {
@@ -953,8 +953,8 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn dcr(&mut self, reg: self::Reg) -> Result<Periods> {
-        self.reg_apply(reg, |r| { r.decrement(); });
-        self.fix_static_flags(reg);
+        self.reg_apply(reg, |r| { r.decrement(); })?;
+        self.fix_static_flags(reg)?;
         let auxcarry = self.reg(reg)?.low() == 0x0f;
         self.state.flags.val(AuxCarry, auxcarry);
         Ok(match reg {
@@ -977,7 +977,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
             self.state.a.overflow_add(0x60);
         }
         self.set_carry_state(new_carry);
-        self.fix_static_flags(Reg::A);
+        self.fix_static_flags(Reg::A)?;
         Ok(4)
     }
 }
@@ -993,11 +993,11 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         })
     }
 
-    fn stax(&mut self, rp: RegPair) -> Periods {
+    fn stax(&mut self, rp: RegPair) -> Result<Periods> {
         let address = self.address(rp);
         let val = self.state.a.into();
-        self.write_byte(address, val);
-        7
+        self.write_byte(address, val)?;
+        Ok(7)
     }
 
     fn ldax(&mut self, rp: RegPair) -> Result<Periods> {
@@ -1088,54 +1088,57 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
     fn ana(&mut self, r: Reg) -> Result<Periods> {
         let other = self.reg(r)?.val;
-        self.accumulator_and(other);
+        self.accumulator_and(other)?;
         self.accumulator_periods(r)
     }
 
     fn xra(&mut self, r: Reg) -> Result<Periods> {
         let other = self.reg(r)?.val;
-        self.accumulator_xor(other);
+        self.accumulator_xor(other)?;
         self.accumulator_periods(r)
     }
 
     fn ora(&mut self, r: Reg) -> Result<Periods> {
         let other = self.reg(r)?.val;
-        self.accumulator_or(other);
+        self.accumulator_or(other)?;
         self.accumulator_periods(r)
     }
 
-    fn ani(&mut self, other: Byte) -> Periods {
-        self.accumulator_and(other);
-        7
+    fn ani(&mut self, other: Byte) -> Result<Periods> {
+        self.accumulator_and(other)?;
+        Ok(7)
     }
 
-    fn xri(&mut self, other: Byte) -> Periods {
-        self.accumulator_xor(other);
-        7
+    fn xri(&mut self, other: Byte) -> Result<Periods> {
+        self.accumulator_xor(other)?;
+        Ok(7)
     }
 
-    fn ori(&mut self, other: Byte) -> Periods {
-        self.accumulator_or(other);
-        7
+    fn ori(&mut self, other: Byte) -> Result<Periods> {
+        self.accumulator_or(other)?;
+        Ok(7)
     }
 
-    fn accumulator_and(&mut self, other: u8) {
+    fn accumulator_and(&mut self, other: u8) -> Result<()>{
         self.state.a = (self.state.a.val & other).into();
-        self.fix_static_flags(Reg::A);
+        self.fix_static_flags(Reg::A)?;
         self.carry_clear();
+        Ok(())
     }
 
-    fn accumulator_or(&mut self, other: u8) {
+    fn accumulator_or(&mut self, other: u8) -> Result<()> {
         self.state.a = (self.state.a.val | other).into();
-        self.fix_static_flags(Reg::A);
+        self.fix_static_flags(Reg::A)?;
         self.carry_clear();
+        Ok(())
     }
 
-    fn accumulator_xor(&mut self, other: u8) {
+    fn accumulator_xor(&mut self, other: u8) -> Result<()> {
         self.state.a = (self.state.a.val ^ other).into();
-        self.fix_static_flags(Reg::A);
+        self.fix_static_flags(Reg::A)?;
         self.carry_clear();
         self.aux_carry_clear();
+        Ok(())
     }
 
     fn cmp(&mut self, r: Reg) -> Result<Periods> {
@@ -1191,50 +1194,50 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
 /// Register Pair Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn push(&mut self, bp: BytePair) -> Periods {
+    fn push(&mut self, bp: BytePair) -> Result<Periods> {
         use self::BytePair::*;
         match bp {
             BC => {
-                self.push_reg(Reg::B);
-                self.push_reg(Reg::C);
+                self.push_reg(Reg::B)?;
+                self.push_reg(Reg::C)?;
             }
             DE => {
-                self.push_reg(Reg::D);
-                self.push_reg(Reg::E);
+                self.push_reg(Reg::D)?;
+                self.push_reg(Reg::E)?;
             }
             HL => {
-                self.push_reg(Reg::H);
-                self.push_reg(Reg::L);
+                self.push_reg(Reg::H)?;
+                self.push_reg(Reg::L)?;
             }
             AF => {
-                self.push_reg(Reg::A);
-                self.push_flags();
+                self.push_reg(Reg::A)?;
+                self.push_flags()?;
             }
         };
-        11
+        Ok(11)
     }
 
-    fn pop(&mut self, bp: BytePair) -> Periods {
+    fn pop(&mut self, bp: BytePair) -> Result<Periods> {
         use self::BytePair::*;
         match bp {
             BC => {
-                self.pop_reg(Reg::C);
-                self.pop_reg(Reg::B);
+                self.pop_reg(Reg::C)?;
+                self.pop_reg(Reg::B)?;
             }
             DE => {
-                self.pop_reg(Reg::E);
-                self.pop_reg(Reg::D);
+                self.pop_reg(Reg::E)?;
+                self.pop_reg(Reg::D)?;
             }
             HL => {
-                self.pop_reg(Reg::L);
-                self.pop_reg(Reg::H);
+                self.pop_reg(Reg::L)?;
+                self.pop_reg(Reg::H)?;
             }
             AF => {
-                self.pop_flags();
-                self.pop_reg(Reg::A);
+                self.pop_flags()?;
+                self.pop_reg(Reg::A)?;
             }
         };
-        10
+        Ok(10)
     }
 
     fn dad(&mut self, rp: RegPair) -> Periods {
@@ -1284,10 +1287,10 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
 /// Direct Addressing Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    fn sta(&mut self, address: Address) -> Periods {
+    fn sta(&mut self, address: Address) -> Result<Periods> {
         let value = self.state.a.val;
-        self.write_byte(address, value);
-        13
+        self.write_byte(address, value)?;
+        Ok(13)
     }
 
     fn lda(&mut self, address: Address) -> Result<Periods> {
@@ -1360,7 +1363,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         10
     }
 
-    fn call(&mut self, address: Address) -> Periods {
+    fn call(&mut self, address: Address) -> Result<Periods> {
         if address == 0x0005 {
             let c_reg = self.state.c.val;
             if c_reg == 0x9 {
@@ -1381,17 +1384,17 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
             panic!("Test Done")
         } else {
             let addr = self.state.pc.into();
-            self.push_addr(addr);
+            self.push_addr(addr)?;
             self.jump(address);
         }
-        17
+        Ok(17)
     }
 
-    fn call_conditionals(&mut self, address: Address, flag: Flag, should_be: bool) -> Periods {
+    fn call_conditionals(&mut self, address: Address, flag: Flag, should_be: bool) -> Result<Periods> {
         if self.state.flags.get(flag) == should_be {
             self.call(address)
         } else {
-            11
+            Ok(11)
         }
     }
 
@@ -1401,18 +1404,18 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         Ok(10)
     }
 
-    fn ret_conditionals(&mut self, flag: Flag, should_be: bool) -> Periods {
+    fn ret_conditionals(&mut self, flag: Flag, should_be: bool) -> Result<Periods> {
         if self.state.flags.get(flag) == should_be {
-            self.ret();
-            11
+            self.ret()?;
+            Ok(11)
         } else {
-            5
+            Ok(5)
         }
     }
 
-    fn rst(&mut self, irq: IrqAddr) -> Periods {
-        self.call(irq.into());
-        11
+    fn rst(&mut self, irq: IrqAddr) -> Result<Periods> {
+        self.call(irq.into())?;
+        Ok(11)
     }
 }
 

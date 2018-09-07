@@ -24,10 +24,12 @@ use std::time;
 use graphics::{WHITE, BLACK, Canvas, Rect};
 use std::panic;
 use std::ops::Deref;
-use std::cell::RefCell;
 
 mod si_memory;
 mod si_io;
+pub mod graphics;
+mod gpu;
+
 
 type Cpu = Cpu8080<SIMmu, Rc<IO>, Rc<IO>>;
 
@@ -122,16 +124,14 @@ fn main() {
     });
     let mut fb = vec![0; w * h];
 
-    let start = time::Instant::now();
-    let mut last_frame = start;
+    let _start = time::Instant::now();
     let mut frames: u64 = 1;
-    let mut upper = true;
     let mut clocks: u64 = 0;
     let (tx, rx) = std::sync::mpsc::channel();
 
     let mut pause_in_frames = None;
 
-    let mut pause = Box::new(ActiveKey {
+    let pause = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::P)),
         action: {
             let tx = tx.clone();
@@ -139,7 +139,7 @@ fn main() {
         },
     });
 
-    let mut steps: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)]
+    let steps: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)]
         .into_iter().map(|(key, s)|
         Box::new(ActiveKey {
             key: FlipFlopKey::from(DirectKey::from(key)),
@@ -159,7 +159,7 @@ fn main() {
     });
     print_frame.change_state(should_print_frame);
 
-    let mut dump_state = Box::new(ActiveKey {
+    let dump_state = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::D)),
         action: {
             let tx = tx.clone();
@@ -373,10 +373,6 @@ fn dump(cpu: &Cpu) {
     println!("Stack: \n{}", cpu.dump_stack());
     println!("last instructions: \n{}", cpu.dump_opcodes());
 }
-
-mod graphics;
-
-mod gpu;
 
 const W: usize = 256;
 const H: usize = 224;

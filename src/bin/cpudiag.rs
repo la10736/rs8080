@@ -14,7 +14,6 @@ use std::rc::Rc;
 use std::io::Read;
 use rs8080::cpu::Cpu as Cpu8080;
 use rs8080::cpu::{CpuError};
-use std::time;
 use rs8080::cpu::PlainMemory;
 use rs8080::cpu::Mmu;
 use rs8080::io_bus::VoidIO;
@@ -23,8 +22,6 @@ mod si_memory;
 mod si_io;
 
 type Cpu = Cpu8080<PlainMemory, Rc<VoidIO>, Rc<VoidIO>>;
-
-const CLOCK: u64 = 2_000_000;
 
 fn main() {
     simple_logger::init_with_level(log::Level::Info).unwrap();
@@ -46,14 +43,11 @@ fn main() {
     let mut cpu = Cpu::new(mmu, io.clone(), io.clone());
     cpu.set_pc(0x100);
 
-    let start = time::Instant::now();
-    let mut clocks: u64 = 0;
-
     loop {
-        clocks += match cpu.run() {
+        match cpu.run() {
             Ok(periods) => periods,
             Err(e) => critical(&cpu, e)
-        } as u64;
+        };
     }
 }
 
@@ -73,7 +67,7 @@ fn dump(cpu: &Cpu) {
 fn load_rom<P: AsRef<Path>>(rom: &mut [u8], dir_name: P, offset: usize) {
     let dir = dir_name.as_ref();
     let files = vec!["cpudiag.bin"].into_iter();
-    let mut rom = &mut rom[0x100..];
+    let rom = &mut rom[offset..];
     let size = rom.len();
     let n = files.len();
 
