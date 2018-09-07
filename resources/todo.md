@@ -14,7 +14,9 @@
   - [x] Memory watcher
     - [x] Maps memory near lives and find what indicate that ship is destroyed
 - [x] Fix tests
-- [ ] Clear all warning (binaries)
+- [x] Clear all warning (binaries)
+- [ ] Clear all warning (tests)
+  - [ ] RsTest should accept tests that raise errors
 - [ ] Replace `reg_apply()`
 - [ ] Generalize Call hook, implement default empty hook and hook for test rom
 - [ ] Clean up code
@@ -33,8 +35,6 @@
 - [ ] Review rotation logic: it's a mess
 - [ ] Extract MMU module from Cpu
 - [ ] Profile and optimize
-- [ ] Clear all warning (tests)
-  - [ ] RsTest should accept tests that raise errors
 - [ ] Save state and memory
 - [ ] Recover from saved state
 - [ ] Multithreading Cpu/Gpu

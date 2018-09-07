@@ -185,7 +185,7 @@ impl ApplyState for RegValue {
             E(v) => { cpu.state.set_e(*v); }
             H(v) => { cpu.state.set_h(*v); }
             L(v) => { cpu.state.set_l(*v); }
-            M(v) => { cpu.set_m(*v); }
+            M(v) => { cpu.set_m(*v).unwrap(); }
         }
     }
 }
