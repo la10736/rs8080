@@ -9,6 +9,7 @@ use io_bus::{VoidIO, test::Loopback};
 type Cpu = GenCpu<PlainMemory, VoidIO, VoidIO>;
 type PlainMemoryCpu<O, I> = GenCpu<PlainMemory, O, I>;
 
+
 fn cpu() -> Cpu {
     let state = State {
         b: 0x10.into(),
@@ -292,7 +293,7 @@ mod pair_register {
         cpu.set_de(0x8f9d);
         cpu.state.set_sp(sp);
 
-        cpu.exec(Push(BytePair::DE));
+        cpu.exec(Push(BytePair::DE)).unwrap();
 
         assert_eq!(cpu.mmu.read_byte(sp - 1), Ok(0x8f));
         assert_eq!(cpu.mmu.read_byte(sp - 2), Ok(0x9d));
@@ -302,7 +303,7 @@ mod pair_register {
     fn push_should_decrease_stack_by_two(mut cpu: Cpu) {
         cpu.state.set_sp(0x1233);
 
-        cpu.exec(Push(BytePair::BC));
+        cpu.exec(Push(BytePair::BC)).unwrap();
 
         assert_eq!(cpu.state.sp, 0x1231)
     }
@@ -315,7 +316,7 @@ mod pair_register {
         cpu.state.flags.set(Carry);
         cpu.state.flags.set(Zero);
 
-        cpu.exec(Push(BytePair::AF));
+        cpu.exec(Push(BytePair::AF)).unwrap();
 
         assert_eq!(cpu.mmu.read_byte(sp - 1), Ok(0xde));
         assert_eq!(cpu.mmu.read_byte(sp - 2), Ok(0x43));
@@ -345,7 +346,7 @@ mod pair_register {
         cpu.mmu.write_byte(sp + 1, 0x9d);
         cpu.state.set_sp(sp);
 
-        cpu.exec(Pop(BytePair::DE));
+        cpu.exec(Pop(BytePair::DE)).unwrap();
 
         assert_eq!(cpu.state.d, 0x9d);
         assert_eq!(cpu.state.e, 0x8f);
@@ -356,7 +357,7 @@ mod pair_register {
         let sp = 0x1230;
         cpu.state.set_sp(sp);
 
-        cpu.exec(Pop(BytePair::BC));
+        cpu.exec(Pop(BytePair::BC)).unwrap();
 
         assert_eq!(cpu.state.sp, sp + 2);
     }
@@ -368,7 +369,7 @@ mod pair_register {
         cpu.mmu.write_byte(sp, 0xc3);
         cpu.mmu.write_byte(sp + 1, 0xff);
 
-        cpu.exec(Pop(BytePair::AF));
+        cpu.exec(Pop(BytePair::AF)).unwrap();
 
         assert!(cpu.state.flag(Sign));
         assert!(cpu.state.flag(Zero));
@@ -382,10 +383,10 @@ mod pair_register {
     fn pop_should_recover_flags_from_push(mut cpu: Cpu) {
         cpu.state.flags.set(Zero);
         cpu.state.flags.set(Parity);
-        cpu.exec(Push(BytePair::AF));
+        cpu.exec(Push(BytePair::AF)).unwrap();
         cpu.state.flags.clear_all();
 
-        cpu.exec(Pop(BytePair::AF));
+        cpu.exec(Pop(BytePair::AF)).unwrap();
 
         assert!(!cpu.state.flags.get(Sign));
         assert!(cpu.state.flags.get(Zero));
@@ -402,10 +403,10 @@ mod pair_register {
     )]
     fn pop_should_recover_all_registers_stored_by_posh(mut cpu: Cpu, r: BytePair, r0: Byte, r1: Byte) {
         (r, (r0, r1)).apply(&mut cpu);
-        cpu.exec(Push(r));
+        cpu.exec(Push(r)).unwrap();
         (r, (0x00, 0x00)).apply(&mut cpu);
 
-        cpu.exec(Pop(r));
+        cpu.exec(Pop(r)).unwrap();
 
         assert_eq!(r.ask(&cpu), (r0, r1));
     }
@@ -415,7 +416,7 @@ mod pair_register {
         cpu.set_bc(0x339f);
         cpu.set_hl(0xa17b);
 
-        cpu.exec(Dad(RegPair::BC));
+        cpu.exec(Dad(RegPair::BC)).unwrap();
 
         assert_eq!(cpu.hl(), 0xd51a);
     }
@@ -432,7 +433,7 @@ mod pair_register {
         RegPairValue::from((rp, sum)).apply(&mut cpu);
         cpu.set_hl(hl);
 
-        cpu.exec(Dad(rp));
+        cpu.exec(Dad(rp)).unwrap();
 
         assert_eq!(cpu.carry(), expected)
     }
@@ -445,7 +446,7 @@ mod pair_register {
     case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1235")),
     )]
     fn inx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
-        cpu.exec(Inx(rp));
+        cpu.exec(Inx(rp)).unwrap();
 
         assert_eq!(query.ask(&cpu), expected);
     }
@@ -465,7 +466,7 @@ mod pair_register {
     {
         init.apply(&mut cpu);
 
-        cpu.exec(Inx(rp));
+        cpu.exec(Inx(rp)).unwrap();
 
         assert_eq!(query.ask(&cpu), expected);
     }
@@ -478,7 +479,7 @@ mod pair_register {
     case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1233")),
     )]
     fn dcx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
-        cpu.exec(Dcx(rp));
+        cpu.exec(Dcx(rp)).unwrap();
 
         assert_eq!(query.ask(&cpu), expected);
     }
@@ -498,7 +499,7 @@ mod pair_register {
     {
         init.apply(&mut cpu);
 
-        cpu.exec(Dcx(rp));
+        cpu.exec(Dcx(rp)).unwrap();
 
         assert_eq!(query.ask(&cpu), expected);
     }
@@ -510,7 +511,7 @@ mod pair_register {
         cpu.set_de(de);
         cpu.set_hl(hl);
 
-        cpu.exec(Xchg);
+        cpu.exec(Xchg).unwrap();
 
         assert_eq!(cpu.de(), hl);
         assert_eq!(cpu.hl(), de);
@@ -523,7 +524,7 @@ mod pair_register {
         cpu.state.set_sp(sp);
         cpu.mmu.write(sp, &[0x0d, 0xf0]);
 
-        cpu.exec(Xthl);
+        cpu.exec(Xthl).unwrap();
 
         assert_eq!(cpu.hl(), 0xf00d);
         assert_eq!(cpu.mmu.read_byte(sp), Ok(0x3c));
@@ -534,7 +535,7 @@ mod pair_register {
     fn sphl_should_copy_hl_in_sp(mut cpu: Cpu) {
         cpu.set_hl(0x506c);
 
-        cpu.exec(Sphl);
+        cpu.exec(Sphl).unwrap();
 
         assert_eq!(cpu.state.sp, 0x506c)
     }
@@ -551,7 +552,7 @@ mod immediate {
     case(Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
     )]
     fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
-        cpu.exec(Lxi(rp));
+        cpu.exec(Lxi(rp)).unwrap();
 
         assert_eq!(query.ask(&cpu), expected);
     }
@@ -564,7 +565,7 @@ mod immediate {
     case(Unwrap("Reg::M"), 0x54),
     )]
     fn mvi_should_store_data_in_register(mut cpu: Cpu, r: Reg, val: Byte) {
-        cpu.exec(Mvi(r, val));
+        cpu.exec(Mvi(r, val)).unwrap();
 
         assert_eq!(r.ask(&cpu), val);
     }
@@ -575,7 +576,7 @@ mod immediate {
         let val = 0xa2;
         cpu.set_hl(address);
 
-        cpu.exec(Mvi(Reg::M, val));
+        cpu.exec(Mvi(Reg::M, val)).unwrap();
 
         assert_eq!(cpu.mmu.read_byte(address), Ok(val));
     }
@@ -739,7 +740,7 @@ mod single_register {
     {
         init.apply(&mut cpu);
 
-        cpu.exec(cmd);
+        cpu.exec(cmd).unwrap();
 
         assert_eq!(init.into().ask(&cpu), after);
     }
@@ -752,7 +753,7 @@ mod data_transfer {
     fn mov_should_move_register_content(mut cpu: Cpu) {
         RegValue::A(0x33).apply(&mut cpu);
 
-        cpu.exec(Mov(Reg::A, Reg::B));
+        cpu.exec(Mov(Reg::A, Reg::B)).unwrap();
 
         assert_eq!(Reg::B.ask(&cpu), 0x33)
     }
@@ -761,7 +762,7 @@ mod data_transfer {
     fn mov_should_move_not_change_source(mut cpu: Cpu) {
         RegValue::D(0xfa).apply(&mut cpu);
 
-        cpu.exec(Mov(Reg::D, Reg::C));
+        cpu.exec(Mov(Reg::D, Reg::C)).unwrap();
 
         assert_eq!(Reg::D.ask(&cpu), 0xfa)
     }
@@ -771,7 +772,7 @@ mod data_transfer {
         cpu.set_bc(0x3f16);
         cpu.state.set_a(0x32);
 
-        cpu.exec(Stax(RegPair::BC));
+        cpu.exec(Stax(RegPair::BC)).unwrap();
 
         assert_eq!(cpu.mmu.read_byte(0x3f16), Ok(0x32));
     }
@@ -792,7 +793,7 @@ mod data_transfer {
         cpu.set_de(address);
         cpu.state.set_a(0xad);
 
-        cpu.exec(Ldax(RegPair::DE));
+        cpu.exec(Ldax(RegPair::DE)).unwrap();
 
         assert_eq!(cpu.state.a, 0x21);
     }
@@ -862,7 +863,7 @@ mod accumulator {
         cpu.state.set_a(start);
         init.apply(&mut cpu);
 
-        cpu.exec(cmd);
+        cpu.exec(cmd).unwrap();
 
         assert_eq!(expected, cpu.state.a.val);
     }
@@ -907,7 +908,7 @@ mod accumulator {
         cpu.state.set_a(start);
         init.apply(&mut cpu);
 
-        cpu.exec(cmd);
+        cpu.exec(cmd).unwrap();
 
         assert_eq!(expected, cpu.state.a.val);
     }
@@ -971,7 +972,7 @@ mod accumulator {
         cpu.state.set_a(start);
         init.apply(&mut cpu);
 
-        cpu.exec(cmd);
+        cpu.exec(cmd).unwrap();
 
         assert_eq!(cpu.state.a, expected);
     }
@@ -1007,7 +1008,7 @@ mod accumulator {
         cpu.state.set_a(a);
         init.apply(&mut cpu);
 
-        cpu.exec(cmd);
+        cpu.exec(cmd).unwrap();
 
         assert_eq!(cpu.carry(), carry);
     }
@@ -1027,7 +1028,7 @@ mod accumulator {
         cpu.state.set_b(b);
         cpu.state.flags.set(Zero);
 
-        cpu.exec(cmd);
+        cpu.exec(cmd).unwrap();
 
         assert!(!cpu.state.flag(Zero));
         assert!(cpu.state.flag(Sign));
@@ -1045,11 +1046,11 @@ mod accumulator {
         cpu.state.set_b(0x36);
         cpu.carry_set();
 
-        cpu.exec(cmd);
+        cpu.exec(cmd).unwrap();
 
         assert!(!cpu.carry());
 
-        cpu.exec(cmd);
+        cpu.exec(cmd).unwrap();
 
         assert!(!cpu.carry());
     }
@@ -1062,11 +1063,11 @@ mod carry_bit {
     fn cmc_should_reverse_carry_bit(mut cpu: Cpu) {
         cpu.carry_clear();
 
-        cpu.exec(Cmc);
+        cpu.exec(Cmc).unwrap();
 
         assert!(cpu.carry());
 
-        cpu.exec(Cmc);
+        cpu.exec(Cmc).unwrap();
 
         assert!(!cpu.carry());
     }
@@ -1075,11 +1076,11 @@ mod carry_bit {
     fn stc_should_set_carry_bit(mut cpu: Cpu) {
         cpu.carry_clear();
 
-        cpu.exec(Stc);
+        cpu.exec(Stc).unwrap();
 
         assert!(cpu.carry());
 
-        cpu.exec(Stc);
+        cpu.exec(Stc).unwrap();
 
         assert!(cpu.carry());
     }
@@ -1103,7 +1104,7 @@ mod rotate_accumulator {
                                  after: Byte, carry: bool) {
         cpu.state.set_a(before);
 
-        cpu.exec(op);
+        cpu.exec(op).unwrap();
 
         assert_eq!(cpu.state.a, after);
         assert_eq!(cpu.carry(), carry);
@@ -1128,7 +1129,7 @@ mod rotate_accumulator {
         cpu.set_carry_state(carry_before);
         cpu.state.set_a(before);
 
-        cpu.exec(op);
+        cpu.exec(op).unwrap();
 
         assert_eq!(cpu.state.a, after);
         assert_eq!(cpu.carry(), carry);
@@ -1141,7 +1142,7 @@ fn sta_should_store_accumulator(mut cpu: Cpu) {
     let addr = 0x320f;
     cpu.state.set_a(accumulator);
 
-    cpu.exec(Sta(addr));
+    cpu.exec(Sta(addr)).unwrap();
 
     assert_eq!(Ok(accumulator), cpu.mmu.read_byte(addr));
 }
@@ -1152,7 +1153,7 @@ fn lda_should_load_accumulator(mut cpu: Cpu) {
     let addr = 0x320f;
     cpu.mmu.write_byte(addr, expected);
 
-    cpu.exec(Lda(addr));
+    cpu.exec(Lda(addr)).unwrap();
 
     assert_eq!(cpu.state.a, expected);
 }
@@ -1163,7 +1164,7 @@ fn shld_should_store_hl_pair(mut cpu: Cpu) {
     let addr = 0x2031;
     cpu.set_hl(hl);
 
-    cpu.exec(Shld(addr));
+    cpu.exec(Shld(addr)).unwrap();
 
     assert_eq!(Ok(cpu.state.l.val), cpu.mmu.read_byte(addr));
     assert_eq!(Ok(cpu.state.h.val), cpu.mmu.read_byte(addr + 1));
@@ -1177,7 +1178,7 @@ fn lhld_should_load_hl_pair(mut cpu: Cpu) {
     cpu.mmu.write_byte(addr, 0xf2);
     cpu.mmu.write_byte(addr + 1, 0xd1);
 
-    cpu.exec(Lhld(addr));
+    cpu.exec(Lhld(addr)).unwrap();
 
     assert_eq!(cpu.hl(), hl);
 }
@@ -1187,7 +1188,7 @@ fn pchl_should_load_pc(mut cpu: Cpu) {
     let addr = 0xad12;
     cpu.set_hl(addr);
 
-    cpu.exec(Pchl);
+    cpu.exec(Pchl).unwrap();
 
     assert_eq!(cpu.state.pc, addr);
 }
@@ -1196,7 +1197,7 @@ fn pchl_should_load_pc(mut cpu: Cpu) {
 fn jump_should_load_pc(mut cpu: Cpu) {
     let addr = 0xad12;
 
-    cpu.exec(Jump(addr));
+    cpu.exec(Jump(addr)).unwrap();
 
     assert_eq!(cpu.state.pc, addr);
 }
@@ -1228,7 +1229,7 @@ fn jump_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
     cpu.state.set_pc(start);
     init.apply(&mut cpu);
 
-    cpu.exec(cmd);
+    cpu.exec(cmd).unwrap();
 
     assert_eq!(cpu.state.pc, expected)
 }
@@ -1275,7 +1276,7 @@ fn call_should_change_pc_and_push_return_address_on_stack(mut cpu: Cpu) {
 
     cpu.state.set_pc(start);
 
-    cpu.exec(Call(addr));
+    cpu.exec(Call(addr)).unwrap();
 
     assert_eq!(cpu.state.pc, addr);
     assert_eq!(cpu.pop_addr(), Ok(start));
@@ -1308,7 +1309,7 @@ fn call_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
     cpu.state.set_pc(start);
     init.apply(&mut cpu);
 
-    cpu.exec(cmd);
+    cpu.exec(cmd).unwrap();
 
     assert_eq!(cpu.state.pc, expected)
 }
@@ -1320,7 +1321,7 @@ fn ret_should_pop_address_from_stack_and_then_jump_to_it(mut cpu: Cpu) {
     cpu.state.set_pc(start);
     cpu.push_addr(addr);
 
-    cpu.exec(Ret);
+    cpu.exec(Ret).unwrap();
 
     assert_eq!(cpu.state.pc, addr);
 }
@@ -1332,13 +1333,13 @@ fn ret_should_walk_the_stack(mut cpu: Cpu) {
     cpu.push_addr(addr[1]);
     cpu.push_addr(addr[2]);
 
-    cpu.exec(Ret);
+    cpu.exec(Ret).unwrap();
     assert_eq!(cpu.state.pc, addr[2]);
 
-    cpu.exec(Ret);
+    cpu.exec(Ret).unwrap();
     assert_eq!(cpu.state.pc, addr[1]);
 
-    cpu.exec(Ret);
+    cpu.exec(Ret).unwrap();
     assert_eq!(cpu.state.pc, addr[0]);
 }
 
@@ -1370,7 +1371,7 @@ fn return_conditionals<A>(mut cpu: Cpu, start: Address, addr: Address, init: A,
     cpu.push_addr(addr);
     init.apply(&mut cpu);
 
-    cpu.exec(cmd);
+    cpu.exec(cmd).unwrap();
 
     assert_eq!(cpu.state.pc, expected)
 }
@@ -1379,7 +1380,7 @@ fn return_conditionals<A>(mut cpu: Cpu, start: Address, addr: Address, init: A,
 fn return_conditional_should_not_pop_address_if_condition_dont_meet(mut cpu: Cpu) {
     cpu.push_addr(0x4320);
 
-    cpu.exec(R(CondFlag::C));
+    cpu.exec(R(CondFlag::C)).unwrap();
 
     assert_eq!(cpu.pop_addr(), Ok(0x4320))
 }
@@ -1391,7 +1392,7 @@ fn rst_should_push_pc_and_jump_to_isr(mut cpu: Cpu) {
     let cmd = Rst(irq);
     cpu.state.set_pc(start);
 
-    cpu.exec(cmd);
+    cpu.exec(cmd).unwrap();
 
     assert_eq!(cpu.state.pc.val, 0x18);
     assert_eq!(cpu.pop_addr(), Ok(start));
@@ -1401,7 +1402,7 @@ fn rst_should_push_pc_and_jump_to_isr(mut cpu: Cpu) {
 fn enable_interrupt(mut cpu: Cpu) {
     cpu.interrupt_enabled = false;
 
-    cpu.exec(Ei);
+    cpu.exec(Ei).unwrap();
 
     assert_eq!(cpu.interrupt_enabled, true);
 }
@@ -1410,7 +1411,7 @@ fn enable_interrupt(mut cpu: Cpu) {
 fn disable_interrupt(mut cpu: Cpu) {
     cpu.interrupt_enabled = true;
 
-    cpu.exec(Di);
+    cpu.exec(Di).unwrap();
 
     assert_eq!(cpu.interrupt_enabled, false);
 }
@@ -1419,7 +1420,7 @@ fn disable_interrupt(mut cpu: Cpu) {
 fn cma(mut cpu: Cpu) {
     cpu.state.set_a(0x51);
 
-    cpu.exec(Cma);
+    cpu.exec(Cma).unwrap();
 
     assert_eq!(cpu.state.a, 0xae)
 }
@@ -1428,7 +1429,7 @@ fn cma(mut cpu: Cpu) {
 fn cma_should_not_set_flags(mut cpu: Cpu) {
     cpu.state.set_a(0xff);
 
-    cpu.exec(Cma);
+    cpu.exec(Cma).unwrap();
 
     assert!(!cpu.state.flag(Zero))
 }
@@ -1438,7 +1439,7 @@ fn cma_should_not_change_flags(mut cpu: Cpu) {
     cpu.state.set_a(0xff);
     cpu.state.flags.set(Zero);
 
-    cpu.exec(Cma);
+    cpu.exec(Cma).unwrap();
 
     assert!(cpu.state.flag(Zero))
 }
@@ -1463,7 +1464,7 @@ fn daa_should_adjust_accumulator(mut cpu: Cpu,
     cpu.state.flags.val(Carry, carry);
     cpu.state.flags.val(AuxCarry, auxcarry);
 
-    cpu.exec(Daa);
+    cpu.exec(Daa).unwrap();
 
     let (a, carry, auxcarry) = after;
     assert_eq!(cpu.state.a, a);
@@ -1478,7 +1479,7 @@ fn daa_should_update_static_flags(mut cpu: Cpu) {
     cpu.state.flags.set(AuxCarry);
 
     //Become 0xdb Z=false sign=true parity=true
-    cpu.exec(Daa);
+    cpu.exec(Daa).unwrap();
 
     assert_eq!(Zero.ask(&cpu), false);
     assert_eq!(Sign.ask(&cpu), true);
@@ -1542,7 +1543,7 @@ case(Unwrap("RegValue::A(0x01)"), Unwrap("Cpi(0xa0)"), false),
 fn should_affect_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instruction, expected: bool) {
     init.apply(&mut cpu);
 
-    cpu.exec(cmd);
+    cpu.exec(cmd).unwrap();
 
     assert_eq!(expected, cpu.state.flags.get(AuxCarry));
 }
@@ -1555,7 +1556,7 @@ fn should_always_reset_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Inst
     init.apply(&mut cpu);
     cpu.set_aux_carry_state(true);
 
-    cpu.exec(cmd);
+    cpu.exec(cmd).unwrap();
 
     assert!(!cpu.state.flags.get(AuxCarry));
 }
@@ -1564,7 +1565,7 @@ fn should_always_reset_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Inst
 fn nop_should_do_nothing(mut cpu: Cpu) {
     let state = cpu.state.clone();
 
-    cpu.exec(Nop);
+    cpu.exec(Nop).unwrap();
 
     assert_eq!(state, cpu.state);
 }
@@ -1582,7 +1583,7 @@ mod io {
         let mut cpu = PlainMemoryCpu { input: Loop::default(), output: VoidIO::default(), ..Default::default() };
         let input_val = 0x42;
 
-        cpu.exec(In(input_val));
+        cpu.exec(In(input_val)).unwrap();
 
         assert_eq!(cpu.state.a, input_val)
     }
@@ -1604,7 +1605,7 @@ mod io {
 
         cpu.state.set_a(out_val);
 
-        cpu.exec(Out(id));
+        cpu.exec(Out(id)).unwrap();
 
         assert_eq!(cpu.output.id.borrow().unwrap(), id);
         assert_eq!(cpu.output.data.borrow().unwrap(), out_val);
@@ -1618,38 +1619,39 @@ mod io {
         let device_id = 0x12;
 
         cpu.state.set_a(val);
-        cpu.exec(Out(device_id));
+        cpu.exec(Out(device_id)).unwrap();
 
         cpu.state.set_a(0x00);
-        cpu.exec(In(device_id));
+        cpu.exec(In(device_id)).unwrap();
 
         assert_eq!(cpu.state.a, val)
     }
 }
 
 mod halt {
-    use super::*;
-
     #[rstest]
-    fn should_enter_in_stopped_state(mut cpu: Cpu) {
-        cpu.exec(Hlt);
-
-        assert!(cpu.is_stopped());
-    }
-
-    #[rstest]
-    fn cpu_in_stopped_state_should_ignore_commands(mut cpu: Cpu) {
+    fn cpu_in_stopped_state_should_return_error(mut cpu: Cpu) {
         let state = cpu.state.clone();
+        let expected = Some(CpuError::NotRunning);
 
         cpu.run_state = CpuState::Stopped;
         assert!(cpu.is_stopped());
 
-        cpu.exec(Mov(Reg::B, Reg::H));
-        cpu.exec(Jump(0x3214));
-        cpu.exec(Add(Reg::C));
-        cpu.exec(Pop(BytePair::DE));
+        assert_eq!(cpu.exec(Mov(Reg::B, Reg::H)).err(), expected);
+        assert_eq!(cpu.exec(Jump(0x3214)).err(), expected);
+        assert_eq!(cpu.exec(Add(Reg::C)).err(), expected);
+        assert_eq!(cpu.exec(Pop(BytePair::DE)).err(), expected);
 
         assert_eq!(state, cpu.state);
+    }
+
+    use super::*;
+
+    #[rstest]
+    fn should_enter_in_stopped_state(mut cpu: Cpu) {
+        cpu.exec(Hlt).unwrap();
+
+        assert!(cpu.is_stopped());
     }
 }
 

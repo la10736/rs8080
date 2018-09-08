@@ -1,5 +1,3 @@
-#![feature(proc_macro)]
-#![feature(fn_traits)]
 extern crate rs8080;
 #[macro_use]
 extern crate log;
@@ -17,8 +15,6 @@ use rs8080::cpu::{CpuError};
 use rs8080::cpu::PlainMemory;
 use rs8080::cpu::Mmu;
 use rs8080::io_bus::VoidIO;
-
-mod si_memory;
 
 type Cpu = Cpu8080<PlainMemory, Rc<VoidIO>, Rc<VoidIO>>;
 

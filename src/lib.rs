@@ -1,4 +1,3 @@
-#![feature(proc_macro)]
 #[cfg(test)]
 extern crate rstest;
 #[macro_use]

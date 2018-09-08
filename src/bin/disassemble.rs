@@ -1,4 +1,3 @@
-#![feature(proc_macro)]
 extern crate rs8080;
 
 use std::io::Read;

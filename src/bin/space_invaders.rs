@@ -1,4 +1,3 @@
-#![feature(proc_macro)]
 #![feature(fn_traits)]
 extern crate rs8080;
 extern crate minifb;
