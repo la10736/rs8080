@@ -17,7 +17,7 @@ use std::io::Read;
 use si_memory::{SIMmu, ROM_SIZE, VRAM_SIZE};
 use si_io::IO;
 use rs8080::cpu::Cpu as Cpu8080;
-use rs8080::cpu::{CpuError, IrqCmd};
+use rs8080::cpu::{CpuError, IrqCmd, hook::NoneHook};
 use gpu::Gpu;
 use std::time;
 use graphics::{WHITE, BLACK, Canvas, Rect};
@@ -30,7 +30,7 @@ pub mod graphics;
 mod gpu;
 
 
-type Cpu = Cpu8080<SIMmu, Rc<IO>, Rc<IO>>;
+type Cpu = Cpu8080<SIMmu, Rc<IO>, Rc<IO>, NoneHook>;
 
 
 #[derive(Default)]
@@ -104,7 +104,7 @@ fn main() {
 
     let io = Rc::new(IO::default());
 
-    let mut cpu = Cpu::new(mmu, io.clone(), io.clone());
+    let mut cpu = Cpu::new(mmu, io.clone(), io.clone(), Default::default());
     let gpu = Gpu::new(W, H, vram.as_ptr());
 
     let w = H + 2 * H_MARGIN;

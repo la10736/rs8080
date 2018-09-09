@@ -5,9 +5,10 @@ use rstest::rstest_parametrize;
 use std::cell::RefCell;
 use std::rc::Rc;
 use io_bus::{VoidIO, test::Loopback};
+use super::hook::NoneHook;
 
-type Cpu = GenCpu<PlainMemory, VoidIO, VoidIO>;
-type PlainMemoryCpu<O, I> = GenCpu<PlainMemory, O, I>;
+type Cpu = GenCpu<PlainMemory, VoidIO, VoidIO, NoneHook>;
+type PlainMemoryCpu<O, I> = GenCpu<PlainMemory, O, I, NoneHook>;
 
 
 fn cpu() -> Cpu {

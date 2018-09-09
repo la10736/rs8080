@@ -10,13 +10,64 @@ use std::fs::File;
 use std::rc::Rc;
 
 use std::io::Read;
-use rs8080::cpu::Cpu as Cpu8080;
-use rs8080::cpu::{CpuError};
-use rs8080::cpu::PlainMemory;
-use rs8080::cpu::Mmu;
-use rs8080::io_bus::VoidIO;
+use rs8080::{
+    cpu::{Cpu as Cpu8080,
+          CpuError, PlainMemory, Mmu, State,
+          hook::AddressCallBack},
+    io_bus::VoidIO,
+    Address,
+    Byte,
+};
 
-type Cpu = Cpu8080<PlainMemory, Rc<VoidIO>, Rc<VoidIO>>;
+#[derive(Default)]
+struct DoMessage {}
+
+impl AddressCallBack for DoMessage {
+    fn is_mine(&self, address: Address) -> bool {
+        address == 0x0005
+    }
+
+    fn exec<M: Mmu>(&self, _address: Address, state: &State, mmu: &M) -> Result<(), CpuError> {
+        const MESSAGE_CMD: Byte = 0x09;
+        const NO_MESSAGE_CMD: Byte = 0x02;
+        match state.c.val {
+            MESSAGE_CMD => {
+                let mut address = (state.d.val as Address) << 8 | (state.e.val as Address) + 3;
+                let mut message = String::new();
+                loop {
+                    let c = mmu.read_byte(address)? as char;
+                    if c == '$' {
+                        break;
+                    }
+                    message.push(c);
+                    address += 1;
+                }
+                println!("Message: {}", message);
+            }
+            NO_MESSAGE_CMD => {
+                println!("No Message");
+            }
+            _ => {
+                //No command
+            }
+        };
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct Done;
+
+impl AddressCallBack for Done {
+    fn is_mine(&self, address: Address) -> bool {
+        address == 0x0000
+    }
+    fn exec<M: Mmu>(&self, _address: Address, _state: &State, _mmu: &M) -> Result<(), CpuError> {
+        panic!("Done")
+    }
+}
+
+type Cpu = Cpu8080<PlainMemory, Rc<VoidIO>, Rc<VoidIO>, (DoMessage, Done)>;
 
 fn main() {
     simple_logger::init_with_level(log::Level::Info).unwrap();
@@ -32,10 +83,11 @@ fn main() {
     mmu.write_byte(368, 0x7).unwrap();
 
 
-
     let io = Rc::new(VoidIO::default());
 
-    let mut cpu = Cpu::new(mmu, io.clone(), io.clone());
+    let cpu_hook: (DoMessage, Done) = Default::default();
+
+    let mut cpu = Cpu::new(mmu, io.clone(), io.clone(), cpu_hook);
     cpu.set_pc(0x100);
 
     loop {

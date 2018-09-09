@@ -13,6 +13,7 @@ use std::fmt::Debug;
 
 type Periods = u16;
 
+pub mod hook;
 #[cfg(test)]
 mod test;
 
@@ -20,6 +21,8 @@ use std::result::Result as StdResult;
 use std::fmt;
 use std::collections::VecDeque;
 use std::fmt::Display;
+
+use self::hook::CallHook;
 
 pub type Result<V> = StdResult<V, CpuError>;
 
@@ -53,7 +56,7 @@ impl RegByte {
 }
 
 #[derive(Default, Clone, Eq, PartialEq)]
-struct Flags(Byte);
+pub struct Flags(Byte);
 
 impl Flags {
     fn mask(f: Flag) -> Byte {
@@ -122,18 +125,18 @@ impl Into<Byte> for Flags {
 }
 
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
-struct State {
-    a: RegByte,
-    b: RegByte,
-    c: RegByte,
-    d: RegByte,
-    e: RegByte,
-    h: RegByte,
-    l: RegByte,
-    pc: RegAddress,
-    sp: RegAddress,
+pub struct State {
+    pub a: RegByte,
+    pub b: RegByte,
+    pub c: RegByte,
+    pub d: RegByte,
+    pub e: RegByte,
+    pub h: RegByte,
+    pub l: RegByte,
+    pub pc: RegAddress,
+    pub sp: RegAddress,
 
-    flags: Flags,
+    pub flags: Flags,
 }
 
 #[derive(Copy, Clone)]
@@ -355,7 +358,7 @@ impl Default for OpCodesHistory {
 }
 
 #[derive(Clone)]
-pub struct Cpu<M: Mmu, O: OutputBus, I: InputBus> {
+pub struct Cpu<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> {
     state: State,
     run_state: CpuState,
 
@@ -367,13 +370,16 @@ pub struct Cpu<M: Mmu, O: OutputBus, I: InputBus> {
 
     output: O,
     input: I,
+
+    hook: H
 }
 
-impl<M, O, I>
-Default for Cpu<M, O, I>
+impl<M, O, I, H>
+Default for Cpu<M, O, I, H>
     where M: Mmu + Default,
           O: OutputBus + Default,
-          I: InputBus + Default
+          I: InputBus + Default,
+          H: CallHook + Default
 {
     fn default() -> Self {
         Cpu {
@@ -384,6 +390,7 @@ Default for Cpu<M, O, I>
             state: Default::default(),
             run_state: Default::default(),
             input: Default::default(),
+            hook: Default::default(),
         }
     }
 }
@@ -415,8 +422,8 @@ impl From<OpcodeError> for CpuError {
 }
 
 /// External interface
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
-    pub fn new(mmu: M, output: O, input: I) -> Self {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
+    pub fn new(mmu: M, output: O, input: I, hook: H) -> Self {
         Cpu {
             state: Default::default(),
             run_state: Default::default(),
@@ -425,12 +432,13 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
             mmu,
             output,
             input,
+            hook,
         }
     }
 
     /// Load instruction at pc and run it
     pub fn run(&mut self) -> Result<Periods> {
-        let pc  = self.pc();
+        let pc = self.pc();
         let op = opcode(self)?;
         debug!("State: {:?} | Exec: {}", self.state, op);
         self.op_code_history.store(pc, self.state.clone(), op);
@@ -626,7 +634,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         }
     }
 
-    pub fn irq(&mut self, cmd: IrqCmd) -> Result<Periods>{
+    pub fn irq(&mut self, cmd: IrqCmd) -> Result<Periods> {
         self.interrupt_enabled = false;
         self.run_state = CpuState::Running;
         self.apply(cmd.into())
@@ -654,7 +662,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Dump interface
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     pub fn dump_state(&self) -> String {
         format!("{:?}", self.state)
     }
@@ -667,7 +675,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         let address = self.state.sp.val;
         format!("0x{:04x} => ", address) + &match (address..0x2400)
             .map(|a| self.read_byte(a))
-            .map( |e| e.map(|v| format!("{:02x}", v)))
+            .map(|e| e.map(|v| format!("{:02x}", v)))
             .collect::<Result<Vec<_>>>() {
             Ok(vals) => vals.join(" "),
             Err(_) => format!("Invalid stack address 0x{:04x}", address)
@@ -683,7 +691,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 }
 
-impl<M: Mmu, O: OutputBus, I: InputBus> Iterator for Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Iterator for Cpu<M, O, I, H> {
     type Item = Result<Byte>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
@@ -694,7 +702,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Iterator for Cpu<M, O, I> {
 }
 
 /// Utilities
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn reg(&self, r: self::Reg) -> Result<RegByte> {
         use self::Reg::*;
         Ok(
@@ -859,12 +867,12 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Carry bit Instructions
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn nop(&mut self) -> Periods { 4 }
 }
 
 /// Carry bit Instructions
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn cmc(&mut self) -> Periods {
         self.state.flags.toggle(Flag::Carry);
         4
@@ -877,7 +885,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
 
 /// Immediate Instructions
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn lxi(&mut self, v: self::RegPairValue) -> Periods {
         use self::RegPairValue::*;
         match v {
@@ -935,7 +943,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Single Register Instructions
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn cma(&mut self) -> Result<Periods> {
         self.reg_apply(self::Reg::A, |r| r.one_complement())
             .map(|_| 4)
@@ -983,7 +991,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Data transfer Instruction
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn mov(&mut self, f: Reg, t: Reg) -> Result<Periods> {
         let orig = self.reg(f)?;
         self.reg_set(t, orig)?;
@@ -1009,7 +1017,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 
 /// Carry and AuxCarry
 #[allow(dead_code)]
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn carry(&self) -> bool {
         self.state.flag(Flag::Carry)
     }
@@ -1036,7 +1044,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Accumulator
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn accumulator_periods(&self, r: Reg) -> Result<Periods> {
         Ok(match r {
             Reg::M => 7,
@@ -1119,7 +1127,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
         Ok(7)
     }
 
-    fn accumulator_and(&mut self, other: u8) -> Result<()>{
+    fn accumulator_and(&mut self, other: u8) -> Result<()> {
         self.state.a = (self.state.a.val & other).into();
         self.fix_static_flags(Reg::A)?;
         self.carry_clear();
@@ -1158,7 +1166,7 @@ const RIGHT_BIT: u8 = 0;
 const LEFT_BIT: u8 = 7;
 
 /// Rotate
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn rlc(&mut self) -> Periods {
         let carry = self.state.a.rotate_left();
         self.set_carry_state(carry);
@@ -1193,7 +1201,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Register Pair Instructions
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn push(&mut self, bp: BytePair) -> Result<Periods> {
         use self::BytePair::*;
         match bp {
@@ -1286,7 +1294,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Direct Addressing Instructions
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn sta(&mut self, address: Address) -> Result<Periods> {
         let value = self.state.a.val;
         self.write_byte(address, value)?;
@@ -1329,7 +1337,7 @@ impl Into<(Flag, bool)> for CondFlag {
     }
 }
 
-impl<M: Mmu, O: OutputBus, I: InputBus> Mmu for Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Mmu for Cpu<M, O, I, H> {
     fn read_byte(&self, address: u16) -> Result<u8> {
         let res = self.mmu.read_byte(address)?;
         Ok(res)
@@ -1345,7 +1353,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Mmu for Cpu<M, O, I> {
 }
 
 /// Jump Instructions
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn pchl(&mut self) -> Periods {
         self.state.pc = self.hl();
         5
@@ -1364,29 +1372,12 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     }
 
     fn call(&mut self, address: Address) -> Result<Periods> {
-        if address == 0x0005 {
-            let c_reg = self.state.c.val;
-            if c_reg == 0x9 {
-                let mut offset = (self.state.d.val as Address) << 8 | (self.state.e.val as Address) + 3;
-                while let Ok(c) = self.read_byte(offset) {
-                    let c = c as char;
-                    if c == '$' {
-                        break;
-                    }
-                    print!("{}", c);
-                    offset += 1;
-                }
-                println!("||||");
-            } else if c_reg == 2 {
-                println!("Print char routine called");
-            }
-        } else if address == 0 {
-            panic!("Test Done")
-        } else {
-            let addr = self.state.pc.into();
-            self.push_addr(addr)?;
-            self.jump(address);
+        if let Some(r) = self.hook.handle(address, &self.state, &self.mmu) {
+            return r.map(|_| 0);
         }
+        let addr = self.state.pc.into();
+        self.push_addr(addr)?;
+        self.jump(address);
         Ok(17)
     }
 
@@ -1420,7 +1411,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Interrupts
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn ei(&mut self) -> Periods {
         self.interrupt_enabled = true;
         4
@@ -1433,7 +1424,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// IO
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn input(&mut self, id: Byte) -> Periods {
         let val = self.input.read(id);
         self.state.set_a(val);
@@ -1447,7 +1438,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 }
 
 /// Halt
-impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
+impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn halt(&mut self) -> Periods {
         self.run_state = CpuState::Stopped;
         7

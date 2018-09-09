@@ -21,7 +21,8 @@
 - [x] ~~Remove vram memory read access~~ GAME NEED A VRAM READ ACCESS
   - [x] Replace `reg_apply()` with `reg_set()` where it's enought
 - [x] Remove mirror memory read access (that happens just in lower segment and in attractive mode)
-- [ ] Generalize Call hook, implement default empty hook and hook for test rom
+- [x] Generalize Call hook, implement default empty hook and hook for test rom
+- [ ] Write some tests about call hook
 - [ ] Clean up code
 - [x] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
