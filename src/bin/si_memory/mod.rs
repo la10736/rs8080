@@ -176,19 +176,15 @@ impl MBank for Mirror {
     }
 }
 
-const MIRROR_DEFAULT: Byte = 0xDE;
-
 impl Mmu for Mirror {
     fn read_byte(&self, address: Address) -> Result<Byte> {
-        //CpuError::memory_read(address)
         error!("Try to read in mirror 0x{:04x}", address);
-        Ok(MIRROR_DEFAULT)
+        CpuError::memory_read(address)
     }
 
-    fn write_byte(&mut self, address: Address, _val: Byte) -> Result<()> {
+    fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
         error!("Try to write in mirror 0x{:04x}", address);
-        //CpuError::memory_write(address, val)
-        Ok(())
+        CpuError::memory_write(address, val)
     }
 
     fn dump(&self) -> String {
@@ -214,6 +210,10 @@ impl SIMmu {
             ..Default::default()
         }
     }
+
+    fn should_ignore_it(&self, address: Address) -> bool {
+        return 0x4000 <= address && address < 0x4200
+    }
 }
 
 impl Mmu for SIMmu {
@@ -232,6 +232,10 @@ impl Mmu for SIMmu {
     }
 
     fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
+        if self.should_ignore_it(address) {
+            debug!("Write access to ignore address 0x{:04x} = 0x{:02x}", address, val);
+            return Ok(())
+        }
         if self.rom.contains(address) {
             self.rom.write_byte(address, val)
         } else if self.ram.contains(address) {
@@ -326,21 +330,15 @@ mod test {
 
             mem.write_byte(address, value).unwrap();
 
-            assert_eq!(value, mem.read_byte(address))
+            assert_eq!(value, mem.read_byte(address).unwrap());
         }
     }
 
     mod mirror {
         use super::*;
 
-        #[rstest_parametrize(
-        address, value,
-        case(0x4000, 0xE1),
-        case(0x5420, 0xA5),
-        case(0xFFFF, 0x1A),
-        )]
-        fn read_should_return_mirror_default(zmem: SIMmu, address: Address) {
-            assert_eq!(Ok(MIRROR_DEFAULT), zmem.read_byte(address));
+        fn mirror() -> Mirror {
+            Mirror::default()
         }
 
         #[rstest_parametrize(
@@ -349,8 +347,37 @@ mod test {
         case(0x5420, 0xA5),
         case(0xFFFF, 0x1A),
         )]
-        fn write_should_ignore(mut zmem: SIMmu, address: Address, value: Byte) {
-            assert!(zmem.write_byte(address, value).is_ok());
+        fn read_should_return_error(mirror: Mirror, address: Address) {
+            assert!(mirror.read_byte(address).is_err());
         }
+
+        #[rstest_parametrize(
+        address, value,
+        case(0x4000, 0xE1),
+        case(0x5420, 0xA5),
+        case(0xFFFF, 0x1A),
+        )]
+        fn write_should_return_error(mut mirror: Mirror, address: Address, value: Byte) {
+            assert!(mirror.write_byte(address, value).is_err());
+        }
+    }
+
+    #[rstest_parametrize(
+    address, value,
+    case(0x4000, 0xE1),
+    case(0x4100, 0xA5),
+    case(0x41ff, 0x1A),
+    )]
+    fn write_should_ignore(mut zmem: SIMmu, address: Address, value: Byte) {
+        assert!(zmem.write_byte(address, value).is_ok());
+    }
+
+    #[rstest_parametrize(
+    address, value,
+    case(0x4200, 0xE1),
+    case(0xffff, 0x1A),
+    )]
+    fn write_should_return_error(mut zmem: SIMmu, address: Address, value: Byte) {
+        assert!(zmem.write_byte(address, value).is_err());
     }
 }

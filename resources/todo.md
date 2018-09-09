@@ -20,10 +20,7 @@
   - [x] ~~RsTest should accept tests that raise errors~~
 - [x] ~~Remove vram memory read access~~ GAME NEED A VRAM READ ACCESS
   - [x] Replace `reg_apply()` with `reg_set()` where it's enought
-  - [ ] Vram should be a normal and owned memory bank where gpu take the pointer:
-    - [ ] is it possible?
-    - [ ] what about move it?
-- [ ] Remove mirror memory read access (that happens just in lower segment and in attractive mode)
+- [x] Remove mirror memory read access (that happens just in lower segment and in attractive mode)
 - [ ] Generalize Call hook, implement default empty hook and hook for test rom
 - [ ] Clean up code
 - [x] Play a valid game
@@ -40,5 +37,8 @@
 - [ ] Profile and optimize
 - [ ] Save state and memory
 - [ ] Recover from saved state
+- [ ] Vram should be a normal and owned memory bank where gpu take the pointer:
+  - [ ] is it possible?
+  - [ ] what about move it?
 - [ ] Multithreading Cpu/Gpu
 - [ ] Vram as remote (send write command mirroring)
