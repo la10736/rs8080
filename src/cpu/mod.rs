@@ -986,7 +986,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
 impl<M: Mmu, O: OutputBus, I: InputBus> Cpu<M, O, I> {
     fn mov(&mut self, f: Reg, t: Reg) -> Result<Periods> {
         let orig = self.reg(f)?;
-        self.reg_apply(t, |dest| { *dest = orig; })?;
+        self.reg_set(t, orig)?;
         Ok(match (f, t) {
             (Reg::M, _) | (_, Reg::M) => 7,
             _ => 5

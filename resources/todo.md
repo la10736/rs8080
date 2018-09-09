@@ -18,12 +18,14 @@
 - [x] Remove unstable feature (proc_macro don't need it now bu still remain unstable)
 - [x] Clear all warning (tests)
   - [x] ~~RsTest should accept tests that raise errors~~
-- [ ] Replace `reg_apply()`
+- [x] ~~Remove vram memory read access~~ GAME NEED A VRAM READ ACCESS
+  - [x] Replace `reg_apply()` with `reg_set()` where it's enought
+  - [ ] Vram should be a normal and owned memory bank where gpu take the pointer:
+    - [ ] is it possible?
+    - [ ] what about move it?
+- [ ] Remove mirror memory read access (that happens just in lower segment and in attractive mode)
 - [ ] Generalize Call hook, implement default empty hook and hook for test rom
 - [ ] Clean up code
-- [ ] Remove vram memory read access (it's happen just in lower segment and in attractive mode)
-- [ ] Remove mirror memory read access
-- [ ] Just some log for lower mirror address
 - [x] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
 - [ ] Implement sync

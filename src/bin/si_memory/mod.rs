@@ -115,7 +115,7 @@ pub struct VRam {
 
 impl From<*mut Byte> for VRam {
     fn from(ptr: *mut Byte) -> Self {
-        VRam { ptr }
+        Self::new(ptr)
     }
 }
 
@@ -149,8 +149,6 @@ impl Mmu for VRam {
         };
         debug!("Read Vram [0x{:04x}]=0x{:02x}", address, val);
         Ok(val)
-//        error!("Try to read in vram 0x{:04x}", address);
-//        CpuError::memory_read(address)
     }
 
     fn write_byte(&mut self, address: Address, val: Byte) -> Result<()> {
@@ -316,24 +314,19 @@ mod test {
     mod vram {
         use super::*;
 
-        type Context = (SIMmu, [Byte; VRAM_SIZE]);
-
-        fn mem() -> Context {
-            let mut vram = [0; VRAM_SIZE];
-            (SIMmu { vram: VRam::new(vram.as_mut_ptr()), ..Default::default() }, vram)
-        }
-
         #[rstest_parametrize(
         address, value,
         case(0x2400, 0xE1),
         case(0x2420, 0xA5),
         case(0x2FFF, 0x1A),
         )]
-        fn write_and_read(mem: Context, address: Address, value: Byte) {
-            let (mut mem, _) = mem;
+        fn write_and_read(address: Address, value: Byte) {
+            let mut vram = [0; VRAM_SIZE];
+            let mut mem = SIMmu { vram: VRam::new(vram.as_mut_ptr()), ..Default::default() };
+
             mem.write_byte(address, value).unwrap();
 
-            assert_eq!(Ok(value), mem.read_byte(address))
+            assert_eq!(value, mem.read_byte(address))
         }
     }
 
