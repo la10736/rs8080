@@ -22,7 +22,7 @@
   - [x] Replace `reg_apply()` with `reg_set()` where it's enought
 - [x] Remove mirror memory read access (that happens just in lower segment and in attractive mode)
 - [x] Generalize Call hook, implement default empty hook and hook for test rom
-- [ ] Write some tests about call hook
+- [x] Write some tests about call hook
 - [ ] Clean up code
   - [ ] move Mmu in a module
   - [ ] move Flags in a Module
