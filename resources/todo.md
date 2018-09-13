@@ -24,7 +24,7 @@
 - [x] Generalize Call hook, implement default empty hook and hook for test rom
 - [x] Write some tests about call hook
 - [ ] Clean up code
-  - [ ] move Mmu in a module
+  - [x] move Mmu in a module
   - [ ] move Flags in a Module
   - [ ] clean import
   - [ ] make cpu statistics pluggable

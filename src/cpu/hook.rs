@@ -1,5 +1,6 @@
-use cpu::{Mmu, State, Result};
+use cpu::{State, Result};
 use Address;
+use mmu::Mmu;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -46,7 +47,7 @@ impl <C: CallHook> CallHook for Rc<C> {
 mod test {
     use super::*;
     use cpu::Cpu as GenCpu;
-    use cpu::PlainMemory;
+    use mmu::PlainMemory;
     use io_bus::VoidIO;
     use std::cell::RefCell;
     use asm::Instruction;

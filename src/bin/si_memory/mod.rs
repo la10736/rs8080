@@ -1,6 +1,5 @@
-use rs8080::cpu::Mmu;
-use rs8080::Address;
-use rs8080::Byte;
+use rs8080::mmu::Mmu;
+use rs8080::{Byte, Address};
 use std::ptr;
 
 use rs8080::cpu::Result;
