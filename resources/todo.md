@@ -39,7 +39,7 @@
 - [x] Rotate screen
 - [x] Scale screen
 - [ ] Review rotation logic: it's a mess
-- [ ] Extract MMU module from Cpu
+- [x] Extract MMU module from Cpu
 - [ ] Profile and optimize
 - [ ] Save state and memory
 - [ ] Recover from saved state
