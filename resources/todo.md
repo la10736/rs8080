@@ -25,7 +25,7 @@
 - [x] Write some tests about call hook
 - [ ] Clean up code
   - [x] move Mmu in a module
-  - [ ] move Flags in a Module
+  - [x] move Flags in a Module
   - [ ] clean import
   - [ ] make cpu statistics pluggable
 - [ ] Make dump state and call history simple to read

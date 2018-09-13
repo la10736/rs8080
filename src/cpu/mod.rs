@@ -1,5 +1,9 @@
 use ::std::mem::swap;
-use self::Flag::*;
+use ::flags::{
+    Flags,
+    Flag,
+    Flag::*
+};
 use super::{
     Address, Byte,
     asm::{BytePair, Instruction, Instruction::*,
@@ -10,7 +14,6 @@ use super::{
     mmu::*,
 };
 use std::fmt::Formatter;
-use std::fmt::Debug;
 
 type Periods = u16;
 
@@ -56,75 +59,6 @@ impl RegByte {
     }
 }
 
-#[derive(Default, Clone, Eq, PartialEq)]
-pub struct Flags(Byte);
-
-impl Flags {
-    fn mask(f: Flag) -> Byte {
-        0x1 << Self::flag_bit(f)
-    }
-
-    fn flag_bit(f: Flag) -> u8 {
-        use self::Flag::*;
-        match f {
-            Sign => 7,
-            Zero => 6,
-            AuxCarry => 4,
-            Parity => 2,
-            Carry => 0,
-        }
-    }
-
-    fn get(&self, f: Flag) -> bool {
-        (self.0 & Self::mask(f)) != 0
-    }
-
-    fn val(&mut self, f: Flag, val: bool) {
-        if val {
-            self.0 |= Self::mask(f)
-        } else {
-            self.0 &= !(Self::mask(f))
-        }
-    }
-
-    fn set(&mut self, f: Flag) {
-        self.val(f, true)
-    }
-
-    #[allow(dead_code)]
-    fn clear(&mut self, f: Flag) {
-        self.val(f, false)
-    }
-
-    fn toggle(&mut self, f: Flag) {
-        let toggled = !self.get(f);
-        self.val(f, toggled)
-    }
-
-    #[allow(dead_code)]
-    fn clear_all(&mut self) {
-        self.0 = 0x0
-    }
-}
-
-impl Debug for Flags {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "0x{:02x}", self.0)
-    }
-}
-
-impl From<Byte> for Flags {
-    fn from(w: Byte) -> Self {
-        Flags(w)
-    }
-}
-
-impl Into<Byte> for Flags {
-    fn into(self) -> Byte {
-        self.0
-    }
-}
-
 #[derive(Default, Clone, Eq, PartialEq, Debug)]
 pub struct State {
     pub a: RegByte,
@@ -138,15 +72,6 @@ pub struct State {
     pub sp: RegAddress,
 
     pub flags: Flags,
-}
-
-#[derive(Copy, Clone)]
-enum Flag {
-    Sign,
-    Zero,
-    AuxCarry,
-    Parity,
-    Carry,
 }
 
 #[allow(dead_code)]
@@ -825,11 +750,11 @@ impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
 /// Carry bit Instructions
 impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn cmc(&mut self) -> Periods {
-        self.state.flags.toggle(Flag::Carry);
+        self.state.flags.toggle(Carry);
         4
     }
     fn stc(&mut self) -> Periods {
-        self.state.flags.set(Flag::Carry);
+        self.state.flags.set(Carry);
         4
     }
 }
@@ -970,7 +895,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
 #[allow(dead_code)]
 impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     fn carry(&self) -> bool {
-        self.state.flag(Flag::Carry)
+        self.state.flag(Carry)
     }
 
     fn carry_clear(&mut self) {
@@ -982,7 +907,7 @@ impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
     }
 
     fn set_carry_state(&mut self, state: bool) {
-        self.state.flags.val(Flag::Carry, state)
+        self.state.flags.val(Carry, state)
     }
 
     fn aux_carry_clear(&mut self) {
