@@ -1,11 +1,12 @@
-use super::*;
-use super::Cpu as GenCpu;
-use rstest::rstest;
-use rstest::rstest_parametrize;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use super::*;
+use super::Cpu as GenCpu;
 use io_bus::{VoidIO, test::Loopback};
-use super::hook::NoneHook;
+use hook::NoneHook;
+
+use rstest::{rstest, rstest_parametrize};
 
 type Cpu = GenCpu<PlainMemory, VoidIO, VoidIO, NoneHook>;
 type PlainMemoryCpu<O, I> = GenCpu<PlainMemory, O, I, NoneHook>;

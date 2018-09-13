@@ -12,17 +12,18 @@ use minifb::{Key, WindowOptions, Window, Scale};
 use std::path::Path;
 use std::fs::File;
 use std::rc::Rc;
-
 use std::io::Read;
+use std::time;
+use std::panic;
+use std::ops::Deref;
+
 use si_memory::{SIMmu, ROM_SIZE, VRAM_SIZE};
 use si_io::IO;
 use rs8080::cpu::Cpu as Cpu8080;
-use rs8080::cpu::{CpuError, IrqCmd, hook::NoneHook};
+use rs8080::cpu::{CpuError, IrqCmd};
+use rs8080::hook::NoneHook;
 use gpu::Gpu;
-use std::time;
 use graphics::{WHITE, BLACK, Canvas, Rect};
-use std::panic;
-use std::ops::Deref;
 
 mod si_memory;
 mod si_io;

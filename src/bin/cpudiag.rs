@@ -12,10 +12,10 @@ use std::rc::Rc;
 use std::io::Read;
 use rs8080::{
     cpu::{Cpu as Cpu8080,
-          CpuError, State,
-          hook::AddressCallBack},
+          CpuError, State},
     mmu::{Mmu, PlainMemory},
     io_bus::VoidIO,
+    hook::AddressCallBack,
     Address,
     Byte,
 };

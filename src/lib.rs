@@ -19,3 +19,4 @@ pub mod asm;
 pub mod registers;
 pub mod mmu;
 pub mod io_bus;
+pub mod hook;

@@ -1,35 +1,28 @@
-use ::std::mem::swap;
-use ::flags::{
-    Flags,
-    Flag,
-    Flag::*
-};
+use std::mem::swap;
+use std::fmt::{self, Display, Formatter};
+use std::result::Result as StdResult;
+use std::collections::VecDeque;
+
 use super::{
     Address, Byte,
-    asm::{BytePair, Instruction, Instruction::*,
-          Reg, RegPair, RegPairValue, CondFlag, IrqAddr},
+    asm::{Reg,
+          Instruction, Instruction::*,
+          BytePair, RegPair, RegPairValue, CondFlag, IrqAddr
+    },
     registers::*,
     disassemble::{opcode, OpcodeError},
     io_bus::{OutputBus, InputBus},
     mmu::*,
+    flags::*,
+    flags::Flag::*,
+    hook::CallHook,
 };
-use std::fmt::Formatter;
 
-type Periods = u16;
-
-pub mod hook;
 #[cfg(test)]
 mod test;
 
-use std::result::Result as StdResult;
-use std::fmt;
-use std::collections::VecDeque;
-use std::fmt::Display;
-
-use self::hook::CallHook;
-
 pub type Result<V> = StdResult<V, CpuError>;
-
+pub type Periods = u16;
 pub const DUMP_MEMORY_COLUMNS: usize = 32;
 
 impl Into<Address> for IrqAddr {
@@ -534,6 +527,10 @@ impl<M: Mmu, O: OutputBus, I: InputBus, H: CallHook> Cpu<M, O, I, H> {
 
     pub fn is_stopped(&self) -> bool {
         self.run_state == CpuState::Stopped
+    }
+
+    pub fn get_state(&self) -> State {
+        self.state.clone()
     }
 }
 

@@ -79,17 +79,19 @@ mod test {
         }
     }
 
+    fn cpu<H: CallHook>(hook: H) -> Cpu<H> {
+        Cpu::new(PlainMemory::default(), VoidIO::default(), VoidIO::default(), hook)
+    }
 
     #[test]
     fn call_should_call_hook_handle() {
         let hook = Rc::new(CallHookMock::default());
-
-        let mut cpu = Cpu {hook: hook.clone(), ..GenCpu::default() };
+        let mut cpu = cpu(hook.clone());
 
         cpu.exec(Instruction::Call(0x54ae)).unwrap();
 
         assert_eq!(hook.data.borrow().0, 0x54ae);
-        assert_eq!(hook.data.borrow().1, cpu.state);
+        assert_eq!(hook.data.borrow().1, cpu.get_state());
     }
 
     #[test]
@@ -98,7 +100,7 @@ mod test {
 
         let hook = Rc::new(AddressMock { accept: address, ..Default::default() } );
 
-        let mut cpu = Cpu {hook: hook.clone(), ..GenCpu::default() };
+        let mut cpu = cpu(hook.clone());
 
         cpu.exec(Instruction::Call(address)).unwrap();
         assert!(*hook.called.borrow());
@@ -109,7 +111,7 @@ mod test {
         let address = 0x54ae;
         let hook = Rc::new(AddressMock { accept: address, ..Default::default() } );
 
-        let mut cpu = Cpu {hook: hook.clone(), ..GenCpu::default() };
+        let mut cpu = cpu(hook.clone());
 
         for a in 0x1000..0x2000 {
             cpu.exec(Instruction::Call(a)).unwrap();
