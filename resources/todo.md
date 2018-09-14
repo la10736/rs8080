@@ -31,7 +31,7 @@
 - [ ] Make dump state and call history simple to read
 - [x] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
-- [ ] Implement sync
+- [x] Implement sync
 - [ ] Implement Buttons
 - [ ] Implement Game options
 - [ ] Implement screen colors

@@ -83,6 +83,7 @@ struct DirectKey {
 const CLOCK: u64 = 2_000_000;
 const CLOCKS_PER_HALF_FRAME: u64 = CLOCK / 120;
 const CLOCKS_PER_FRAME: u64 = CLOCKS_PER_HALF_FRAME * 2;
+const FRAMES_PER_SECONDS: u64 = 60;
 
 enum Command {
     Dump,
@@ -124,8 +125,9 @@ fn main() {
     });
     let mut fb = vec![0; w * h];
 
-    let _start = time::Instant::now();
+    let mut start = time::Instant::now();
     let mut frames: u64 = 1;
+    let mut last_frame_start = frames;
     let mut clocks: u64 = 0;
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -193,7 +195,11 @@ fn main() {
             match cmd {
                 Command::Dump => dump(&cpu),
                 Command::Pause => { pause_in_frames = Some(0) }
-                Command::Continue => { pause_in_frames = None }
+                Command::Continue => {
+                    pause_in_frames = None;
+                    start = time::Instant::now();
+                    last_frame_start = frames;
+                }
                 Command::Step(n) => { pause_in_frames = Some(n) }
                 Command::PrintFrames(v) => { should_print_frame = v }
             }
@@ -214,6 +220,12 @@ fn main() {
             frames += 1;
 
             pause_in_frames = pause_in_frames.and_then(|n| if n > 0 { Some(n - 1) } else { None });
+            let when = start + time::Duration::from_millis(((frames - last_frame_start) * 1000) / FRAMES_PER_SECONDS);
+            let now = time::Instant::now();
+            if when > now {
+                let diff = when - now;
+                std::thread::sleep(diff);
+            }
         } else {
             std::thread::sleep(time::Duration::from_millis(100));
             window.update();
