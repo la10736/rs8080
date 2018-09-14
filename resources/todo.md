@@ -35,11 +35,13 @@
 - [ ] Implement Buttons
 - [ ] Implement Game options
 - [ ] Implement screen colors
+- [ ] Implement 2x..nx and no wait
 - [ ] Command Line Interface
 - [x] Rotate screen
 - [x] Scale screen
 - [ ] Review rotation logic: it's a mess
 - [x] Extract MMU module from Cpu
+- [ ] Encapsulate frame performance statistics statistics
 - [ ] Profile and optimize
 - [ ] Save state and memory
 - [ ] Recover from saved state

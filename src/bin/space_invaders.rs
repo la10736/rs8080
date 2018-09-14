@@ -91,10 +91,11 @@ enum Command {
     Continue,
     Step(usize),
     PrintFrames(bool),
+    PrintStat(bool),
 }
 
 fn main() {
-    simple_logger::init_with_level(log::Level::Warn).unwrap();
+    simple_logger::init_with_level(log::Level::Info).unwrap();
 
     info!("SPACE INVADERS");
 
@@ -151,7 +152,9 @@ fn main() {
             },
         }) as Box<WindowKey>
     ).collect();
+    let mut late = time::Duration::default();
     let mut should_print_frame = false;
+    let mut should_print_late_stat = false;
     let mut print_frame = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::F)),
         action: {
@@ -160,6 +163,14 @@ fn main() {
         },
     });
     print_frame.change_state(should_print_frame);
+    let mut print_stat = Box::new(ActiveKey {
+        key: FlipFlopKey::from(DirectKey::from(Key::G)),
+        action: {
+            let tx = tx.clone();
+            move |state| { tx.send(Command::PrintStat(state)).unwrap(); }
+        },
+    });
+    print_stat.change_state(should_print_late_stat);
 
     let dump_state = Box::new(ActiveKey {
         key: FlipFlopKey::from(DirectKey::from(Key::D)),
@@ -182,6 +193,7 @@ fn main() {
         .collect();
     buttons.push(pause);
     buttons.push(print_frame);
+    buttons.push(print_stat);
     buttons.extend(steps.into_iter());
     buttons.push(dump_state);
 
@@ -202,6 +214,7 @@ fn main() {
                 }
                 Command::Step(n) => { pause_in_frames = Some(n) }
                 Command::PrintFrames(v) => { should_print_frame = v }
+                Command::PrintStat(v) => { should_print_late_stat = v }
             }
         }
 
@@ -214,7 +227,7 @@ fn main() {
             window.update_with_buffer(&fb).unwrap();
 
             if should_print_frame {
-                println!("Frame nr: {}", frames);
+                info!("Frame nr: {}", frames);
             }
 
             frames += 1;
@@ -225,13 +238,22 @@ fn main() {
             if when > now {
                 let diff = when - now;
                 std::thread::sleep(diff);
+            } else {
+                let diff = now - when;
+                if should_print_late_stat {
+                    info!("I'm late: {:?}", diff);
+                }
+                late += diff;
             }
         } else {
             std::thread::sleep(time::Duration::from_millis(100));
             window.update();
         }
     }
-
+    if should_print_late_stat {
+        let tot = time::Duration::from_millis((frames * 1000) / FRAMES_PER_SECONDS);
+        info!("Total late: {:?} on {:?}", late, tot);
+    }
     info!("Game Done");
 }
 
