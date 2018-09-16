@@ -11,7 +11,6 @@ use rstest::{rstest, rstest_parametrize};
 type Cpu = GenCpu<PlainMemory, VoidIO, VoidIO, NoneHook>;
 type PlainMemoryCpu<O, I> = GenCpu<PlainMemory, O, I, NoneHook>;
 
-
 fn cpu() -> Cpu {
     let state = State {
         b: 0x10.into(),
@@ -26,8 +25,10 @@ fn cpu() -> Cpu {
     Cpu { state, ..Default::default() }
 }
 
+trait QueryResult: PartialEq + Eq + Clone + Copy + ::std::fmt::Debug {}
+
 trait CpuQuery {
-    type Result: PartialEq;
+    type Result: QueryResult;
 
     fn ask(&self, cpu: &Cpu) -> Self::Result;
 }
@@ -45,8 +46,6 @@ enum ByteReg {
 }
 
 struct SP;
-
-trait QueryResult: PartialEq + Eq + Clone + Copy + ::std::fmt::Debug {}
 
 impl CpuQuery for ByteReg {
     type Result = Byte;
@@ -119,8 +118,8 @@ impl<T0: QueryResult, R0, T1: QueryResult, R1> CpuQuery for (R0, R1) where
     type Result = (T0, T1);
 
     fn ask(&self, cpu: &Cpu) -> <Self as CpuQuery>::Result {
-        match *self {
-            (ref r0, ref r1) => (r0.ask(&cpu), r1.ask(&cpu))
+        match self {
+            (r0, r1) => (r0.ask(&cpu), r1.ask(&cpu))
         }
     }
 }
@@ -133,15 +132,15 @@ impl CpuQuery for Address {
     }
 }
 
-trait ApplyState {
+trait Apply {
     fn apply(&self, cpu: &mut Cpu);
 }
 
-impl ApplyState for () {
+impl Apply for () {
     fn apply(&self, _cpu: &mut Cpu) {}
 }
 
-impl ApplyState for RegPairValue {
+impl Apply for RegPairValue {
     fn apply(&self, cpu: &mut Cpu) {
         use self::RegPairValue::*;
         use self::RegValue::*;
@@ -177,7 +176,7 @@ enum RegValue {
     M(Byte),
 }
 
-impl ApplyState for RegValue {
+impl Apply for RegValue {
     fn apply(&self, cpu: &mut Cpu) {
         use self::RegValue::*;
         match self {
@@ -193,15 +192,15 @@ impl ApplyState for RegValue {
     }
 }
 
-impl ApplyState for Flag {
+impl Apply for Flag {
     fn apply(&self, cpu: &mut Cpu) {
         cpu.state.flags.set(*self)
     }
 }
 
-impl<A, B> ApplyState for (A, B) where
-    A: ApplyState,
-    B: ApplyState
+impl<A, B> Apply for (A, B) where
+    A: Apply,
+    B: Apply
 {
     fn apply(&self, cpu: &mut Cpu) {
         self.0.apply(cpu);
@@ -209,9 +208,9 @@ impl<A, B> ApplyState for (A, B) where
     }
 }
 
-impl ApplyState for (BytePair, (Byte, Byte)) {
+impl Apply for (BytePair, (Byte, Byte)) {
     fn apply(&self, cpu: &mut Cpu) {
-        let (rp, v) = self.clone();
+        let &(rp, v) = self;
         use self::BytePair::*;
         match rp {
             BC => cpu.set_bc(v),
@@ -333,7 +332,7 @@ mod pair_register {
     case(Parity, 0x06),
     case(Carry, 0x03),
     )]
-    fn push_should_store_flags_correctly<I: ApplyState>(mut cpu: Cpu, init: I, expected: Byte) {
+    fn push_should_store_flags_correctly<I: Apply>(mut cpu: Cpu, init: I, expected: Byte) {
         init.apply(&mut cpu);
 
         let flags = cpu.state.pack_flags();
@@ -627,7 +626,7 @@ mod single_register {
     case(Unwrap("RegValue::M(0x12)"), Unwrap("Reg::M"), Unwrap("ByteReg::M"), 0x13),
     )]
     fn inr_should_increment_register<I, Q, R>(mut cpu: Cpu, init: I, reg: Reg, query: Q, expected: R)
-        where I: ApplyState, R: QueryResult, Q: CpuQuery<Result=R>
+        where I: Apply, R: QueryResult, Q: CpuQuery<Result=R>
     {
         init.apply(&mut cpu);
 
@@ -738,7 +737,7 @@ mod single_register {
     )]
     fn single_register_command<I>(mut cpu: Cpu, cmd: Instruction, init: I, after: Byte)
         where
-            I: ApplyState + Into<Reg>
+            I: Apply + Into<Reg>
     {
         init.apply(&mut cpu);
 
@@ -860,7 +859,7 @@ mod accumulator {
     )]
     fn additions_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
         where
-            I: ApplyState,
+            I: Apply,
     {
         cpu.state.set_a(start);
         init.apply(&mut cpu);
@@ -905,7 +904,7 @@ mod accumulator {
     )]
     fn subtraction_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
         where
-            I: ApplyState,
+            I: Apply,
     {
         cpu.state.set_a(start);
         init.apply(&mut cpu);
@@ -969,7 +968,7 @@ mod accumulator {
     )]
     fn bit_logic_integration<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
         where
-            I: ApplyState
+            I: Apply
     {
         cpu.state.set_a(start);
         init.apply(&mut cpu);
@@ -1006,7 +1005,7 @@ mod accumulator {
     case(0x10, Unwrap("()"), Unwrap("Cpi(0x0f)"), false),
     case(0x10, Unwrap("()"), Unwrap("Cpi(0x82)"), true),
     )]
-    fn compare_ops<I: ApplyState>(mut cpu: Cpu, a: Byte, init: I, cmd: Instruction, carry: bool) {
+    fn compare_ops<I: Apply>(mut cpu: Cpu, a: Byte, init: I, cmd: Instruction, carry: bool) {
         cpu.state.set_a(a);
         init.apply(&mut cpu);
 
@@ -1226,7 +1225,7 @@ case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::PO, 0xa030)"), 0xa030),
 fn jump_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
                         cmd: Instruction, expected: Address)
     where
-        A: ApplyState
+        A: Apply
 {
     cpu.state.set_pc(start);
     init.apply(&mut cpu);
@@ -1306,7 +1305,7 @@ case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::PO, 0xa030)"), 0xa030),
 fn call_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
                         cmd: Instruction, expected: Address)
     where
-        A: ApplyState
+        A: Apply
 {
     cpu.state.set_pc(start);
     init.apply(&mut cpu);
@@ -1367,7 +1366,7 @@ case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::PO)"), 0xa030),
 fn return_conditionals<A>(mut cpu: Cpu, start: Address, addr: Address, init: A,
                           cmd: Instruction, expected: Address)
     where
-        A: ApplyState
+        A: Apply
 {
     cpu.state.set_pc(start);
     cpu.push_addr(addr);
@@ -1542,7 +1541,7 @@ case(Unwrap("RegValue::A(0xa4)"), Unwrap("Cpi(0x05)"), true),
 case(Unwrap("RegValue::A(0x00)"), Unwrap("Cpi(0x01)"), true),
 case(Unwrap("RegValue::A(0x01)"), Unwrap("Cpi(0xa0)"), false),
 )]
-fn should_affect_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instruction, expected: bool) {
+fn should_affect_aux_carry<I: Apply>(mut cpu: Cpu, init: I, cmd: Instruction, expected: bool) {
     init.apply(&mut cpu);
 
     cpu.exec(cmd).unwrap();
@@ -1554,7 +1553,7 @@ fn should_affect_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instructio
 init, cmd, expected,
 case(Unwrap("RegValue::B(0xaf)"), Unwrap("Xra(Reg::B)")),
 )]
-fn should_always_reset_aux_carry<I: ApplyState>(mut cpu: Cpu, init: I, cmd: Instruction) {
+fn should_always_reset_aux_carry<I: Apply>(mut cpu: Cpu, init: I, cmd: Instruction) {
     init.apply(&mut cpu);
     cpu.set_aux_carry_state(true);
 

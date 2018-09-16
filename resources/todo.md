@@ -39,6 +39,10 @@
 - [ ] Command Line Interface
 - [x] Rotate screen
 - [x] Scale screen
+- [ ] remove `OpCode::length()`
+- [ ] refact space invaders
+  - [ ] package `si`
+  - [ ] move all related module into `si`
 - [ ] Review rotation logic: it's a mess
 - [x] Extract MMU module from Cpu
 - [ ] Encapsulate frame performance statistics statistics

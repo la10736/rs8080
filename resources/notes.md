@@ -1,0 +1,34 @@
+# Di cosa parlare
+
+- Le risorse (101)
+- Di cosa e' composto un emulatore
+- Struttura del mio codice come si esende una `Cpu`
+  - `cpudiag`
+  - `spaceinvaders`
+- Obbiettivi:
+  - Breve
+    - Eseguibile completo
+    - Versione WASM
+  - Medio
+    - Profilazione e Ottimizzazione
+    - Altri Giochi
+    - Estendere a Z80 mantenendo il Core
+    - Giochi per Z80
+  - Lungo
+    - Estendere a 6502/6510
+    - Implementare C64
+- TDD?
+  - Le vittorie
+  - La sconfitta
+- Cosa ho imparato:
+  - Patterns Emersi
+    - Reverse Your Mind:
+      - Composite
+      - Apply
+      - Query : `inx`
+    - `From` e `Into` come e quando
+    - channels non solo per il multithreading
+  - Safe, Unsafe
+  - `Rc<>`, `RefCell<>
+  - Pointers and move
+  - Attenzione `match` non diventa una jumping table ...

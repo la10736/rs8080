@@ -3,6 +3,9 @@ name = "rs8080"
 version = "0.1.0"
 authors = ["michele <michele.damico@gmail.com>"]
 
+[profile.release]
+debug = true
+
 [dependencies]
 log = "*"
 simple_logger = "*"

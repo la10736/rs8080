@@ -24,66 +24,28 @@ use rs8080::cpu::{CpuError, IrqCmd};
 use rs8080::hook::NoneHook;
 use gpu::Gpu;
 use graphics::{WHITE, BLACK, Canvas, Rect};
+use self::key::{FlipFlopKey, DirectKey, ActiveKey, WindowKey, DKey};
 
 mod si_memory;
 mod si_io;
 pub mod graphics;
 mod gpu;
+mod key;
 
 
 type Cpu = Cpu8080<SIMmu, Rc<IO>, Rc<IO>, NoneHook>;
-
-
-#[derive(Default)]
-struct FlipFlop {
-    pub state: bool
-}
-
-impl FlipFlop {
-    pub fn change(&mut self) {
-        self.state = !self.state;
-    }
-}
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-enum KeyState {
-    Pressed,
-    Released,
-}
-
-impl From<bool> for KeyState {
-    fn from(state: bool) -> Self {
-        match state {
-            true => KeyState::Pressed,
-            false => KeyState::Released
-        }
-    }
-}
-
-impl Into<bool> for KeyState {
-    fn into(self) -> bool {
-        match self {
-            KeyState::Pressed => true,
-            KeyState::Released => false,
-        }
-    }
-}
-
-trait WindowKey {
-    fn update(&mut self, window: &Window) -> bool;
-    fn active(&self) -> bool;
-    fn change_state(&mut self, val: bool) -> bool;
-}
-
-struct DirectKey {
-    key: Key,
-    last: KeyState,
-}
 
 const CLOCK: u64 = 2_000_000;
 const CLOCKS_PER_HALF_FRAME: u64 = CLOCK / 120;
 const CLOCKS_PER_FRAME: u64 = CLOCKS_PER_HALF_FRAME * 2;
 const FRAMES_PER_SECONDS: u64 = 60;
+
+const W: usize = 256;
+const H: usize = 224;
+const W_MARGIN: usize = 0;
+
+const H_MARGIN: usize = 20;
+
 
 enum Command {
     Dump,
@@ -134,51 +96,52 @@ fn main() {
 
     let mut pause_in_frames = None;
 
-    let pause = Box::new(ActiveKey {
-        key: FlipFlopKey::from(DirectKey::from(Key::P)),
-        action: {
-            let tx = tx.clone();
-            move |state| tx.send(if state { Command::Pause } else { Command::Continue }).unwrap()
-        },
-    });
+    let pause = Box::new(
+        ActiveKey::new(FlipFlopKey::from(DirectKey::from(Key::P)),
+                       {
+                           let tx = tx.clone();
+                           move |state| tx.send(if state { Command::Pause } else { Command::Continue }).unwrap()
+                       })
+    );
 
     let steps: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)]
         .into_iter().map(|(key, s)|
-        Box::new(ActiveKey {
-            key: FlipFlopKey::from(DirectKey::from(key)),
-            action: {
-                let tx = tx.clone();
-                move |_| { tx.send(Command::Step(s)).unwrap(); }
-            },
-        }) as Box<WindowKey>
+        Box::new(ActiveKey::new(FlipFlopKey::from(DirectKey::from(key)),
+                                {
+                                    let tx = tx.clone();
+                                    move |_| { tx.send(Command::Step(s)).unwrap(); }
+                                },
+        )
+        ) as Box<WindowKey>
     ).collect();
     let mut late = time::Duration::default();
     let mut should_print_frame = false;
     let mut should_print_late_stat = false;
-    let mut print_frame = Box::new(ActiveKey {
-        key: FlipFlopKey::from(DirectKey::from(Key::F)),
-        action: {
-            let tx = tx.clone();
-            move |state| { tx.send(Command::PrintFrames(state)).unwrap(); }
-        },
-    });
+    let mut print_frame = Box::new(
+        ActiveKey::new(FlipFlopKey::from(DirectKey::from(Key::F)),
+                       {
+                           let tx = tx.clone();
+                           move |state| { tx.send(Command::PrintFrames(state)).unwrap(); }
+                       },
+        )
+    );
     print_frame.change_state(should_print_frame);
-    let mut print_stat = Box::new(ActiveKey {
-        key: FlipFlopKey::from(DirectKey::from(Key::G)),
-        action: {
+    let mut print_stat = Box::new(ActiveKey::new(
+        FlipFlopKey::from(DirectKey::from(Key::G)),
+        {
             let tx = tx.clone();
             move |state| { tx.send(Command::PrintStat(state)).unwrap(); }
         },
-    });
+    ));
     print_stat.change_state(should_print_late_stat);
 
-    let dump_state = Box::new(ActiveKey {
-        key: FlipFlopKey::from(DirectKey::from(Key::D)),
-        action: {
+    let dump_state = Box::new(ActiveKey::new(
+        FlipFlopKey::from(DirectKey::from(Key::D)),
+        {
             let tx = tx.clone();
             move |_| { tx.send(Command::Dump).unwrap(); }
         },
-    });
+    ));
 
     let game_buttons = [
         (Key::Key5, si_io::Ev::Coin),
@@ -280,113 +243,8 @@ fn next_frame(cpu: &mut Cpu, gpu: &Gpu, w: usize, h: usize, fb: &mut Vec<u32>,
     Ok(clocks)
 }
 
-impl From<Key> for DirectKey {
-    fn from(key: Key) -> Self {
-        DirectKey {
-            key,
-            last: KeyState::Released,
-        }
-    }
-}
-
-impl WindowKey for DirectKey {
-    fn update(&mut self, window: &Window) -> bool {
-        let prev = self.last;
-        self.last = window.is_key_down(self.key).into();
-        prev != self.last
-    }
-
-    fn active(&self) -> bool {
-        self.last.into()
-    }
-
-    fn change_state(&mut self, val: bool) -> bool {
-        let old = self.last;
-        self.last = val.into();
-        old != self.last
-    }
-}
-
-struct FlipFlopKey<K: WindowKey> {
-    key: K,
-    flip_flop: FlipFlop,
-}
-
-impl<K: WindowKey> From<K> for FlipFlopKey<K> {
-    fn from(key: K) -> Self {
-        FlipFlopKey {
-            key,
-            flip_flop: Default::default(),
-        }
-    }
-}
-
-impl<K: WindowKey> WindowKey for FlipFlopKey<K> {
-    fn update(&mut self, window: &Window) -> bool {
-        let changed = self.key.update(window);
-
-        if changed && !self.key.active() {
-            self.flip_flop.change();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn active(&self) -> bool {
-        self.flip_flop.state
-    }
-
-    fn change_state(&mut self, val: bool) -> bool {
-        if val != self.flip_flop.state {
-            self.flip_flop.change();
-            true
-        } else {
-            false
-        }
-    }
-}
-
-struct ActiveKey<K: WindowKey, F: Fn(bool)> {
-    key: K,
-    action: F,
-}
-
-type DKey<F> = ActiveKey<DirectKey, F>;
-
-impl<K: WindowKey, F: Fn(bool)> WindowKey for ActiveKey<K, F> {
-    fn update(&mut self, window: &Window) -> bool {
-        let changed = self.key.update(window);
-        if changed {
-            self.call_action();
-        }
-        changed
-    }
-
-    fn active(&self) -> bool {
-        self.key.active()
-    }
-
-    fn change_state(&mut self, val: bool) -> bool {
-        let changed = self.key.change_state(val);
-        if changed {
-            self.call_action();
-        }
-        changed
-    }
-}
-
-impl<K: WindowKey, F: Fn(bool)> ActiveKey<K, F> {
-    fn call_action(&self) {
-        self.action.call((self.active(), ));
-    }
-}
-
 fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: si_io::Ev) -> Box<WindowKey + 'a> {
-    Box::new(DKey {
-        key: key.into(),
-        action: move |state| io.ui_event(ev, state),
-    })
+    Box::new(DKey::new(key.into(), move |state| io.ui_event(ev, state)))
 }
 
 fn cpu_run_till(cpu: &mut Cpu, mut clocks: u64, expected_clocks: u64) -> Result<u64, CpuError> {
@@ -407,12 +265,6 @@ fn dump(cpu: &Cpu) {
     println!("Stack: \n{}", cpu.dump_stack());
     println!("last instructions: \n{}", cpu.dump_opcodes());
 }
-
-const W: usize = 256;
-const H: usize = 224;
-const W_MARGIN: usize = 0;
-
-const H_MARGIN: usize = 20;
 
 fn load_rom<P: AsRef<Path>>(rom: &mut [u8], dir_name: P) {
     let dir = dir_name.as_ref();

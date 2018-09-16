@@ -279,9 +279,6 @@ impl CpuError {
     pub fn memory_write<V>(address: Address, val: Byte) -> Result<V> {
         Err(CpuError::Memory(MemoryError::Write(address, val)))
     }
-    pub fn memory_ref<V>(address: Address) -> Result<V> {
-        Err(CpuError::Memory(MemoryError::Ref(address)))
-    }
 }
 
 impl From<OpcodeError> for CpuError {
