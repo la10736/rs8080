@@ -28,7 +28,7 @@ use self::key::{FlipFlopKey, DirectKey, ActiveKey, WindowKey, DKey};
 
 mod si_memory;
 mod si_io;
-pub mod graphics;
+mod graphics;
 mod gpu;
 mod key;
 
