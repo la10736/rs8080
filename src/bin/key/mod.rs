@@ -79,6 +79,12 @@ pub struct FlipFlopKey<K: WindowKey> {
     flip_flop: FlipFlop,
 }
 
+impl<K: WindowKey> FlipFlopKey<K> {
+    pub fn new(key: K, state: bool) -> Self {
+        Self { key, flip_flop: FlipFlop { state } }
+    }
+}
+
 impl<K: WindowKey> From<K> for FlipFlopKey<K> {
     fn from(key: K) -> Self {
         FlipFlopKey {

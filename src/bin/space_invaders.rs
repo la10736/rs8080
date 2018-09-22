@@ -25,6 +25,7 @@ use rs8080::hook::NoneHook;
 use gpu::Gpu;
 use graphics::{WHITE, BLACK, Canvas, Rect};
 use self::key::{FlipFlopKey, DirectKey, ActiveKey, WindowKey, DKey};
+use std::sync::mpsc::Sender;
 
 mod si_memory;
 mod si_io;
@@ -95,70 +96,11 @@ fn main() {
     let (tx, rx) = std::sync::mpsc::channel();
 
     let mut pause_in_frames = None;
-
-    let pause = Box::new(
-        ActiveKey::new(FlipFlopKey::from(DirectKey::from(Key::P)),
-                       {
-                           let tx = tx.clone();
-                           move |state| tx.send(if state { Command::Pause } else { Command::Continue }).unwrap()
-                       })
-    );
-
-    let steps: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)]
-        .into_iter().map(|(key, s)|
-        Box::new(ActiveKey::new(FlipFlopKey::from(DirectKey::from(key)),
-                                {
-                                    let tx = tx.clone();
-                                    move |_| { tx.send(Command::Step(s)).unwrap(); }
-                                },
-        )
-        ) as Box<WindowKey>
-    ).collect();
     let mut late = time::Duration::default();
     let mut should_print_frame = false;
     let mut should_print_late_stat = false;
-    let mut print_frame = Box::new(
-        ActiveKey::new(FlipFlopKey::from(DirectKey::from(Key::F)),
-                       {
-                           let tx = tx.clone();
-                           move |state| { tx.send(Command::PrintFrames(state)).unwrap(); }
-                       },
-        )
-    );
-    print_frame.change_state(should_print_frame);
-    let mut print_stat = Box::new(ActiveKey::new(
-        FlipFlopKey::from(DirectKey::from(Key::G)),
-        {
-            let tx = tx.clone();
-            move |state| { tx.send(Command::PrintStat(state)).unwrap(); }
-        },
-    ));
-    print_stat.change_state(should_print_late_stat);
 
-    let dump_state = Box::new(ActiveKey::new(
-        FlipFlopKey::from(DirectKey::from(Key::D)),
-        {
-            let tx = tx.clone();
-            move |_| { tx.send(Command::Dump).unwrap(); }
-        },
-    ));
-
-    let game_buttons = [
-        (Key::Key5, si_io::Ev::Coin),
-        (Key::Key1, si_io::Ev::P1Start),
-        (Key::Left, si_io::Ev::P1Left),
-        (Key::Right, si_io::Ev::P1Right),
-        (Key::Space, si_io::Ev::P1Shoot),
-    ];
-
-    let mut buttons: Vec<_> = game_buttons.into_iter().cloned()
-        .map(|(k, ev)| game_key(k, io.clone(), ev))
-        .collect();
-    buttons.push(pause);
-    buttons.push(print_frame);
-    buttons.push(print_stat);
-    buttons.extend(steps.into_iter());
-    buttons.push(dump_state);
+    let mut keys = keys(io, tx, should_print_frame, should_print_late_stat);
 
     loop {
         if !window.is_open() || window.is_key_down(Key::Escape) {
@@ -181,7 +123,7 @@ fn main() {
             }
         }
 
-        buttons.iter_mut().for_each(|b| { b.update(&window); });
+        keys_apply(&mut window, &mut keys);
 
         if pause_in_frames != Some(0) {
             clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
@@ -192,7 +134,6 @@ fn main() {
             if should_print_frame {
                 info!("Frame nr: {}", frames);
             }
-
             frames += 1;
 
             pause_in_frames = pause_in_frames.and_then(|n| if n > 0 { Some(n - 1) } else { None });
@@ -243,15 +184,70 @@ fn next_frame(cpu: &mut Cpu, gpu: &Gpu, w: usize, h: usize, fb: &mut Vec<u32>,
     Ok(clocks)
 }
 
-fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: si_io::Ev) -> Box<WindowKey + 'a> {
-    Box::new(DKey::new(key.into(), move |state| io.ui_event(ev, state)))
-}
-
 fn cpu_run_till(cpu: &mut Cpu, mut clocks: u64, expected_clocks: u64) -> Result<u64, CpuError> {
     while clocks < expected_clocks {
         clocks += cpu.run()? as u64;
     }
     Ok(clocks)
+}
+
+fn keys_apply(window: &mut Window, keys: &mut Vec<Box<WindowKey>>) {
+    keys.iter_mut().for_each(|b| { b.update(&window); });
+}
+
+fn keys(io: Rc<IO>, tx: Sender<Command>, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<WindowKey>> {
+    let mut buttons = si_keys(io);
+    buttons.extend(ui_keys(tx, should_print_frame, should_print_late_stat).into_iter());
+    buttons
+}
+
+fn ui_keys(tx: Sender<Command>, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
+    let pause = ui_key(Key::P,
+                       |s| if s { Command::Pause } else { Command::Continue },
+                       false, tx.clone());
+    let print_frame = ui_key(Key::F,
+                             |s| Command::PrintFrames(s),
+                             should_print_frame, tx.clone());
+    let print_stat = ui_key(Key::G,
+                            |s| Command::PrintStat(s),
+                            should_print_late_stat, tx.clone());
+    let dump_state = ui_key(Key::D,
+                            |_| Command::Dump,
+                            false, tx.clone());
+    let mut keys = vec![pause, print_frame, print_stat, dump_state];
+    let steps_key: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)];
+    keys.extend(steps_key.into_iter().map(
+        |(k, frames)| ui_key(k,
+                             move |_| Command::Step(frames),
+                             false, tx.clone())
+    ));
+    keys
+}
+
+fn ui_key<'a>(key: Key, action: impl Fn(bool) -> Command + 'a, state: bool, tx: Sender<Command>) -> Box<WindowKey + 'a> {
+    box_key(ActiveKey::new(FlipFlopKey::new(DirectKey::from(key), state),
+                           move |state| tx.send(action(state)).unwrap(),
+    ))
+}
+
+fn si_keys(io: Rc<IO>) -> Vec<Box<dyn WindowKey>> {
+    [
+        (Key::Key5, si_io::Ev::Coin),
+        (Key::Key1, si_io::Ev::P1Start),
+        (Key::Left, si_io::Ev::P1Left),
+        (Key::Right, si_io::Ev::P1Right),
+        (Key::Space, si_io::Ev::P1Shoot),
+    ].into_iter().cloned()
+        .map(|(k, ev)| game_key(k, io.clone(), ev))
+        .collect()
+}
+
+fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: si_io::Ev) -> Box<WindowKey + 'a> {
+    box_key(DKey::new(key.into(), move |state| io.ui_event(ev, state)))
+}
+
+fn box_key<'a, K: WindowKey + 'a>(k: K) -> Box<WindowKey + 'a> {
+    Box::new(k)
 }
 
 fn critical(cpu: &Cpu, e: CpuError) -> ! {
