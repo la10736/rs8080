@@ -29,7 +29,7 @@ use std::sync::mpsc::Sender;
 
 mod si_memory;
 mod si_io;
-mod graphics;
+pub mod graphics;
 mod gpu;
 mod key;
 

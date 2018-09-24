@@ -28,7 +28,7 @@
   - [x] move Flags in a Module
   - [ ] clean import
   - [ ] make cpu statistics pluggable
-- [ ] Make dump state and call history simple to read
+- [x] Make dump state and call history simple to read
 - [x] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
 - [x] Implement sync

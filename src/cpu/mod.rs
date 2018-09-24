@@ -214,7 +214,7 @@ impl OpCodesHistory {
 impl Display for OpCodesHistory {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         for (pos, (pc, state, op)) in self.buffer.iter().rev().enumerate() {
-            write!(f, "   [{:8}] [0x{:04x}] - {:15} | {:?}\n", pos, pc, op, state)?;
+            write!(f, "   [{:8}] [0x{:04x}] - {:15} | {:?}\n", pos, pc, format!("{}", op), state)?;
         }
         Ok(())
     }
