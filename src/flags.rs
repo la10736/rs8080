@@ -1,5 +1,4 @@
-use core::fmt;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{self, Debug, Formatter};
 use Byte;
 
 

@@ -1,7 +1,4 @@
-use graphics::Canvas;
-use graphics::Rect;
-use graphics::Pixel;
-use graphics::Point;
+use graphics::{Canvas, Rect, Pixel, Point};
 
 pub struct Gpu {
     ptr: *const u8,

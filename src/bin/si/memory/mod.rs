@@ -1,10 +1,13 @@
-use rs8080::mmu::Mmu;
-use rs8080::{Byte, Address};
 use std::ptr;
 
-use rs8080::cpu::Result;
-use rs8080::cpu::CpuError;
-use rs8080::cpu::{str_memory, DUMP_MEMORY_COLUMNS};
+use rs8080::{
+    Byte, Address,
+    cpu::{
+        Result, CpuError, str_memory, DUMP_MEMORY_COLUMNS
+    },
+    mmu::Mmu
+};
+
 
 trait MBank: Mmu {
     fn offset(&self) -> usize;

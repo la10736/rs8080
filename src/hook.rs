@@ -1,8 +1,11 @@
+use std::{
+    ops::Deref,
+    rc::Rc
+};
+
 use cpu::{State, Result};
 use Address;
 use mmu::Mmu;
-use std::ops::Deref;
-use std::rc::Rc;
 
 pub trait AddressCallBack {
     fn is_mine(&self, address: Address) -> bool;

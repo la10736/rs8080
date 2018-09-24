@@ -1,8 +1,7 @@
+use std::fmt::{Debug, Formatter, Error};
+
 use Byte;
 use Address;
-use std::fmt::Debug;
-use std::fmt::Formatter;
-use std::fmt::Error;
 
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
 pub struct RegByte {

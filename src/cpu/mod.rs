@@ -1,7 +1,9 @@
-use std::mem::swap;
-use std::fmt::{self, Display, Formatter};
-use std::result::Result as StdResult;
-use std::collections::VecDeque;
+use std::{
+    fmt::{self, Display, Formatter},
+    result::Result as StdResult,
+    collections::VecDeque,
+    mem::swap
+};
 
 use super::{
     Address, Byte,

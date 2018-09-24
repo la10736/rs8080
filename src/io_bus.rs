@@ -1,5 +1,6 @@
-use Byte;
 use std::ops::Deref;
+
+use Byte;
 
 pub trait OutputBus {
     fn send(&self, id: Byte, data: Byte);

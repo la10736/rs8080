@@ -26,7 +26,7 @@
 - [ ] Clean up code
   - [x] move Mmu in a module
   - [x] move Flags in a Module
-  - [ ] clean import
+  - [x] clean import
   - [ ] make cpu statistics pluggable
 - [x] Make dump state and call history simple to read
 - [x] Play a valid game
@@ -40,12 +40,12 @@
 - [x] Rotate screen
 - [x] Scale screen
 - [ ] remove `OpCode::length()`
-- [ ] refact space invaders
-  - [ ] package `si`
-  - [ ] move all related module into `si`
+- [x] refact space invaders
+  - [x] package `si`
+  - [x] move all related module into `si`
 - [ ] Review rotation logic: it's a mess
 - [x] Extract MMU module from Cpu
-- [ ] Encapsulate frame performance statistics statistics
+- [ ] Encapsulate frame performance statistics
 - [ ] Profile and optimize
 - [ ] Save state and memory
 - [ ] Recover from saved state

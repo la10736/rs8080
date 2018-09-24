@@ -5,11 +5,13 @@ extern crate simple_logger;
 #[cfg(test)]
 extern crate rstest;
 
-use std::path::Path;
-use std::fs::File;
-use std::rc::Rc;
+use std::{
+    path::Path,
+    fs::File,
+    rc::Rc,
+    io::Read
+};
 
-use std::io::Read;
 use rs8080::{
     cpu::{Cpu as Cpu8080,
           CpuError, State},

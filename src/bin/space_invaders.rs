@@ -1,38 +1,42 @@
 #![feature(fn_traits)]
-extern crate rs8080;
-extern crate minifb;
 #[macro_use]
 extern crate log;
-extern crate simple_logger;
+extern crate minifb;
+extern crate rs8080;
 #[cfg(test)]
 extern crate rstest;
+extern crate simple_logger;
 
-use minifb::{Key, WindowOptions, Window, Scale};
+use std::{
+    fs::File,
+    io::Read,
+    ops::Deref,
+    path::Path,
+    rc::Rc,
+    sync::mpsc::Sender,
+    time,
+};
+use minifb::{Key, Scale, Window, WindowOptions};
 
-use std::path::Path;
-use std::fs::File;
-use std::rc::Rc;
-use std::io::Read;
-use std::time;
-use std::panic;
-use std::ops::Deref;
+use rs8080::{
+    cpu::{
+        Cpu as Cpu8080,
+        CpuError, IrqCmd,
+    },
+    hook::NoneHook
+};
 
-use si_memory::{SIMmu, ROM_SIZE, VRAM_SIZE};
-use si_io::IO;
-use rs8080::cpu::Cpu as Cpu8080;
-use rs8080::cpu::{CpuError, IrqCmd};
-use rs8080::hook::NoneHook;
-use gpu::Gpu;
-use graphics::{WHITE, BLACK, Canvas, Rect};
-use self::key::{FlipFlopKey, DirectKey, ActiveKey, WindowKey, DKey};
-use std::sync::mpsc::Sender;
-
-mod si_memory;
-mod si_io;
+mod si;
 pub mod graphics;
-mod gpu;
 mod key;
 
+use si::{
+    io::{self, IO},
+    memory::{ROM_SIZE, SIMmu, VRAM_SIZE},
+    gpu::Gpu
+};
+use graphics::{BLACK, Canvas, Rect, WHITE};
+use key::{ActiveKey, DirectKey, DKey, FlipFlopKey, WindowKey};
 
 type Cpu = Cpu8080<SIMmu, Rc<IO>, Rc<IO>, NoneHook>;
 
@@ -232,17 +236,17 @@ fn ui_key<'a>(key: Key, action: impl Fn(bool) -> Command + 'a, state: bool, tx: 
 
 fn si_keys(io: Rc<IO>) -> Vec<Box<dyn WindowKey>> {
     [
-        (Key::Key5, si_io::Ev::Coin),
-        (Key::Key1, si_io::Ev::P1Start),
-        (Key::Left, si_io::Ev::P1Left),
-        (Key::Right, si_io::Ev::P1Right),
-        (Key::Space, si_io::Ev::P1Shoot),
+        (Key::Key5, io::Ev::Coin),
+        (Key::Key1, io::Ev::P1Start),
+        (Key::Left, io::Ev::P1Left),
+        (Key::Right, io::Ev::P1Right),
+        (Key::Space, io::Ev::P1Shoot),
     ].into_iter().cloned()
         .map(|(k, ev)| game_key(k, io.clone(), ev))
         .collect()
 }
 
-fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: si_io::Ev) -> Box<WindowKey + 'a> {
+fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: io::Ev) -> Box<WindowKey + 'a> {
     box_key(DKey::new(key.into(), move |state| io.ui_event(ev, state)))
 }
 

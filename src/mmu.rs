@@ -1,6 +1,7 @@
-use ::{Byte, Address};
-use ::cpu::Result;
 use std::fmt::{self, Debug, Formatter};
+
+use {Byte, Address};
+use cpu::Result;
 
 #[derive(Clone)]
 pub struct PlainMemory {
