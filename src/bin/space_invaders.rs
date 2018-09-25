@@ -65,23 +65,23 @@ struct SiOpt {
     #[structopt(short = "c", long = "coin-info")]
     coin_info: bool,
 
-    /// Bonus live at 1500
+    /// Bonus life at 1500
     #[structopt(short = "b", long = "bonus-1500")]
-    bonus_live_1500: bool,
+    bonus_life_1500: bool,
 
-    /// Should play just some frames
+    /// Play just some frames and the pause it
     #[structopt(short = "p", long = "pause")]
     pause_in_frames: Option<usize>,
 
-    /// Should dump frame number
+    /// Dump frames number
     #[structopt(short = "f", long = "frame-number")]
     print_frame_number: bool,
 
-    /// Should dump stats
+    /// Dump stats info
     #[structopt(short = "S", long = "stats")]
     dump_stats: bool,
 
-    /// Should dump stats
+    /// Run at full speed
     #[structopt(short = "F", long = "fast")]
     fast: bool,
 
