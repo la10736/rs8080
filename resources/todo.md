@@ -33,12 +33,15 @@
 - [ ] Some test about timing (clocks) and error Propagation
 - [x] Implement sync
 - [ ] Implement Buttons
-- [ ] Implement Game options
+- [x] Implement Game options
 - [ ] Implement screen colors
-- [ ] Implement 2x..nx and no wait
-- [ ] Command Line Interface
+- [ ] Implement Speed Control:
+  - [ ] 2x..nx
+  - [x] no wait
+- [x] Command Line Interface
 - [x] Rotate screen
 - [x] Scale screen
+- [ ] Encapsulate timeing logic
 - [ ] remove `OpCode::length()`
 - [x] refact space invaders
   - [x] package `si`

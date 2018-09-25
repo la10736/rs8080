@@ -6,6 +6,8 @@ extern crate rs8080;
 #[cfg(test)]
 extern crate rstest;
 extern crate simple_logger;
+#[macro_use]
+extern crate structopt;
 
 use std::{
     fs::File,
@@ -17,6 +19,7 @@ use std::{
     time,
 };
 use minifb::{Key, Scale, Window, WindowOptions};
+use structopt::StructOpt;
 
 use rs8080::{
     cpu::{
@@ -51,6 +54,42 @@ const W_MARGIN: usize = 0;
 
 const H_MARGIN: usize = 20;
 
+#[derive(StructOpt, Debug)]
+#[structopt(name = "space_invaders")]
+struct SiOpt {
+    /// Lives
+    #[structopt(short = "l", long = "lives", default_value="3")]
+    lives: u8,
+
+    /// Activate coin info
+    #[structopt(short = "c", long = "coin-info")]
+    coin_info: bool,
+
+    /// Bonus live at 1500
+    #[structopt(short = "b", long = "bonus-1500")]
+    bonus_live_1500: bool,
+
+    /// Should play just some frames
+    #[structopt(short = "p", long = "pause")]
+    pause_in_frames: Option<usize>,
+
+    /// Should dump frame number
+    #[structopt(short = "f", long = "frame-number")]
+    print_frame_number: bool,
+
+    /// Should dump stats
+    #[structopt(short = "S", long = "stats")]
+    dump_stats: bool,
+
+    /// Should dump stats
+    #[structopt(short = "F", long = "fast")]
+    fast: bool,
+
+    // The number of occurences of the `v/verbose` flag
+    /// Verbose mode (-v, -vv, -vvv, etc.)
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    verbose: u8,
+}
 
 enum Command {
     Dump,
@@ -59,12 +98,20 @@ enum Command {
     Step(usize),
     PrintFrames(bool),
     PrintStat(bool),
+    Fast(bool),
 }
 
 fn main() {
-    simple_logger::init_with_level(log::Level::Info).unwrap();
+    let opt = SiOpt::from_args();
+    let level = match opt.verbose {
+        0 => log::Level::Info,
+        _ => log::Level::Debug
+    };
+
+    simple_logger::init_with_level(level).unwrap();
 
     info!("SPACE INVADERS");
+
 
     let mut rom = [0; ROM_SIZE];
     let mut vram = [0; VRAM_SIZE];
@@ -72,7 +119,12 @@ fn main() {
 
     let mmu = SIMmu::new(rom.into(), vram.as_mut_ptr().into());
 
-    let io = Rc::new(IO::default());
+    let si_io = IO::default()
+        .change_lives(opt.lives)
+        .coin_info_set(opt.coin_info)
+        .lower_bonus_life(!opt.bonus_live_1500);
+
+    let io = Rc::new(si_io);
 
     let mut cpu = Cpu::new(mmu, io.clone(), io.clone(), Default::default());
     let gpu = Gpu::new(W, H, vram.as_ptr());
@@ -99,12 +151,13 @@ fn main() {
     let mut clocks: u64 = 0;
     let (tx, rx) = std::sync::mpsc::channel();
 
-    let mut pause_in_frames = None;
+    let mut pause_in_frames = opt.pause_in_frames;
     let mut late = time::Duration::default();
-    let mut should_print_frame = false;
-    let mut should_print_late_stat = false;
+    let mut should_print_frame = opt.print_frame_number;
+    let mut should_dump_stat = opt.dump_stats;
+    let mut fast = opt.fast;
 
-    let mut keys = keys(io, tx, should_print_frame, should_print_late_stat);
+    let mut keys = keys(io, tx, fast, should_print_frame, should_dump_stat);
 
     loop {
         if !window.is_open() || window.is_key_down(Key::Escape) {
@@ -123,7 +176,12 @@ fn main() {
                 }
                 Command::Step(n) => { pause_in_frames = Some(n) }
                 Command::PrintFrames(v) => { should_print_frame = v }
-                Command::PrintStat(v) => { should_print_late_stat = v }
+                Command::PrintStat(v) => { should_dump_stat = v }
+                Command::Fast(v) => {
+                    fast = v;
+                    start = time::Instant::now();
+                    last_frame_start = frames;
+                }
             }
         }
 
@@ -141,24 +199,27 @@ fn main() {
             frames += 1;
 
             pause_in_frames = pause_in_frames.and_then(|n| if n > 0 { Some(n - 1) } else { None });
-            let when = start + time::Duration::from_millis(((frames - last_frame_start) * 1000) / FRAMES_PER_SECONDS);
-            let now = time::Instant::now();
-            if when > now {
-                let diff = when - now;
-                std::thread::sleep(diff);
-            } else {
-                let diff = now - when;
-                if should_print_late_stat {
-                    info!("I'm late: {:?}", diff);
+
+            if !fast {
+                let when = start + time::Duration::from_millis(((frames - last_frame_start) * 1000) / FRAMES_PER_SECONDS);
+                let now = time::Instant::now();
+                if when > now {
+                    let diff = when - now;
+                    std::thread::sleep(diff);
+                } else {
+                    let diff = now - when;
+                    if should_dump_stat {
+                        info!("I'm late: {:?}", diff);
+                    }
+                    late += diff;
                 }
-                late += diff;
             }
         } else {
             std::thread::sleep(time::Duration::from_millis(100));
             window.update();
         }
     }
-    if should_print_late_stat {
+    if should_dump_stat {
         let tot = time::Duration::from_millis((frames * 1000) / FRAMES_PER_SECONDS);
         info!("Total late: {:?} on {:?}", late, tot);
     }
@@ -199,13 +260,13 @@ fn keys_apply(window: &mut Window, keys: &mut Vec<Box<WindowKey>>) {
     keys.iter_mut().for_each(|b| { b.update(&window); });
 }
 
-fn keys(io: Rc<IO>, tx: Sender<Command>, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<WindowKey>> {
+fn keys(io: Rc<IO>, tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<WindowKey>> {
     let mut buttons = si_keys(io);
-    buttons.extend(ui_keys(tx, should_print_frame, should_print_late_stat).into_iter());
+    buttons.extend(ui_keys(tx, fast, should_print_frame, should_print_late_stat).into_iter());
     buttons
 }
 
-fn ui_keys(tx: Sender<Command>, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
+fn ui_keys(tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
     let pause = ui_key(Key::P,
                        |s| if s { Command::Pause } else { Command::Continue },
                        false, tx.clone());
@@ -218,7 +279,10 @@ fn ui_keys(tx: Sender<Command>, should_print_frame: bool, should_print_late_stat
     let dump_state = ui_key(Key::D,
                             |_| Command::Dump,
                             false, tx.clone());
-    let mut keys = vec![pause, print_frame, print_stat, dump_state];
+    let fast = ui_key(Key::NumPadPlus,
+                            |s| Command::Fast(s),
+                      fast, tx.clone());
+    let mut keys = vec![pause, print_frame, print_stat, dump_state, fast];
     let steps_key: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)];
     keys.extend(steps_key.into_iter().map(
         |(k, frames)| ui_key(k,
