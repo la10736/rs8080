@@ -6,7 +6,7 @@ extern crate rs8080;
 #[cfg(test)]
 extern crate rstest;
 extern crate simple_logger;
-#[macro_use]
+//#[macro_use]
 extern crate structopt;
 
 use std::{
@@ -122,7 +122,7 @@ fn main() {
     let si_io = IO::default()
         .change_lives(opt.lives)
         .coin_info_set(opt.coin_info)
-        .lower_bonus_life(!opt.bonus_live_1500);
+        .lower_bonus_life(!opt.bonus_life_1500);
 
     let io = Rc::new(si_io);
 
