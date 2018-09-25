@@ -96,10 +96,10 @@ impl IO {
         }
     }
 
-    pub fn lower_bonus_life(self) -> Self {
-        let old = *self.port2.borrow();
+    pub fn lower_bonus_life(self, value: bool) -> Self {
+        let state = mask(*self.port2.borrow(), BONUS_LIFE_MASK, value);
         IO {
-            port2: RefCell::new(old | BONUS_LIFE_MASK),
+            port2: RefCell::new(state),
             ..self
         }
     }
@@ -108,12 +108,16 @@ impl IO {
         *self.port2.borrow() & COIN_INFO_MASK == 0x00
     }
 
-    pub fn coin_info_off(self) -> Self {
-        let old = *self.port2.borrow();
+    pub fn coin_info_set(self, value: bool) -> Self {
+        let state = mask(*self.port2.borrow(), COIN_INFO_MASK, !value);
         IO {
-            port2: RefCell::new(old | COIN_INFO_MASK),
+            port2: RefCell::new(state),
             ..self
         }
+    }
+
+    pub fn coin_info_off(self) -> Self {
+        self.coin_info_set(false)
     }
 
     pub fn change_lives(self, lives: u8) -> Self {
@@ -139,6 +143,13 @@ impl IO {
             3 => 6,
             _ => unreachable!()
         }
+    }
+}
+
+fn mask(data: Byte, mask: Byte, set_or_clear: bool) -> Byte {
+    match set_or_clear {
+        true => data | mask,
+        false => data & !mask,
     }
 }
 
@@ -255,9 +266,13 @@ mod test {
     fn change_bonus_life(io: IO) {
         assert_eq!(1500, io.bonus_life());
 
-        let io = io.lower_bonus_life();
+        let io = io.lower_bonus_life(true);
 
         assert_eq!(1000, io.bonus_life());
+
+        let io = io.lower_bonus_life(false);
+
+        assert_eq!(1500, io.bonus_life());
     }
 
     #[rstest]
@@ -265,6 +280,14 @@ mod test {
         assert_eq!(true, io.coin_info());
 
         let io = io.coin_info_off();
+
+        assert_eq!(false, io.coin_info());
+
+        let io = io.coin_info_set(true);
+
+        assert_eq!(true, io.coin_info());
+
+        let io = io.coin_info_set(false);
 
         assert_eq!(false, io.coin_info());
     }
