@@ -32,7 +32,7 @@
 - [x] Play a valid game
 - [ ] Some test about timing (clocks) and error Propagation
 - [x] Implement sync
-- [ ] Implement Buttons
+- [x] Implement Buttons
 - [x] Implement Game options
 - [ ] Implement screen colors
 - [ ] Implement Speed Control:
@@ -41,7 +41,7 @@
 - [x] Command Line Interface
 - [x] Rotate screen
 - [x] Scale screen
-- [ ] Encapsulate timeing logic
+- [ ] Encapsulate timing logic
 - [ ] remove `OpCode::length()`
 - [x] refact space invaders
   - [x] package `si`
