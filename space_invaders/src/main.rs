@@ -1,6 +1,4 @@
 #![feature(fn_traits)]
-#[macro_use]
-extern crate log;
 extern crate minifb;
 extern crate rs8080;
 #[cfg(test)]
@@ -8,6 +6,8 @@ extern crate rstest;
 extern crate simple_logger;
 //#[macro_use]
 extern crate structopt;
+#[macro_use]
+extern crate log;
 
 use std::{
     fs::File,
@@ -115,7 +115,7 @@ fn main() {
 
     let mut rom = [0; ROM_SIZE];
     let mut vram = [0; VRAM_SIZE];
-    load_rom(&mut rom, "resources");
+    load_rom(&mut rom, "space_invaders/resources");
 
     let mmu = SIMmu::new(rom.into(), vram.as_mut_ptr().into());
 
@@ -280,7 +280,7 @@ fn ui_keys(tx: Sender<Command>, fast: bool, should_print_frame: bool, should_pri
                             |_| Command::Dump,
                             false, tx.clone());
     let fast = ui_key(Key::NumPadPlus,
-                            |s| Command::Fast(s),
+                      |s| Command::Fast(s),
                       fast, tx.clone());
     let mut keys = vec![pause, print_frame, print_stat, dump_state, fast];
     let steps_key: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)];

@@ -1,7 +1,6 @@
 extern crate rs8080;
 #[macro_use]
 extern crate log;
-extern crate simple_logger;
 #[cfg(test)]
 extern crate rstest;
 
@@ -73,8 +72,6 @@ impl AddressCallBack for Done {
 type Cpu = Cpu8080<PlainMemory, Rc<VoidIO>, Rc<VoidIO>, (DoMessage, Done)>;
 
 fn main() {
-    simple_logger::init_with_level(log::Level::Info).unwrap();
-
     info!("Test Rs 8080");
 
 

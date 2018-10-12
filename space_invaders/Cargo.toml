@@ -1,17 +1,14 @@
 [package]
-name = "rs8080"
+name = "space_invaders"
 version = "0.1.0"
 authors = ["michele <michele.damico@gmail.com>"]
 
-[profile.release]
-debug = true
-
-[workspace]
-members = ["space_invaders"]
-
-
 [dependencies]
-log = "*"
+rs8080 = { path="../" }
+log="*"
+simple_logger = "*"
+minifb = "*"
+structopt="*"
 
 [dev-dependencies]
 rstest = { git = "https://github.com/la10736/rstest" }

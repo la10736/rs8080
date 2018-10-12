@@ -25,7 +25,7 @@ fn space_invaders_head() {
 
     let out = Command::new("cargo")
         .args(["run", "--bin", "disassemble"].iter())
-        .args(["--", "resources/invaders.h"].iter())
+        .args(["--", "space_invaders/resources/invaders.h"].iter())
         .output().unwrap();
 
     let stdout = std::str::from_utf8(&out.stdout).unwrap().trim();
