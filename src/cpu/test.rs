@@ -327,7 +327,7 @@ mod pair_register {
 
     #[rstest_parametrize(
     init, expected,
-    case(Unwrap("()"), 0x02),
+    case((), 0x02),
     case(Sign, 0x82),
     case(Zero, 0x42),
     case(AuxCarry, 0x12),
@@ -426,11 +426,11 @@ mod pair_register {
 
     #[rstest_parametrize(
     hl, rp, sum, expected,
-    case(0xffff, Unwrap("RegPair::DE"), 0x0001, true),
-    case(0xffff, Unwrap("RegPair::BC"), 0x0000, false),
-    case(0x0001, Unwrap("RegPair::BC"), 0xffff, true),
-    case(0x0000, Unwrap("RegPair::SP"), 0xffff, false),
-    case(0xa7f2, Unwrap("RegPair::SP"), 0x8f31, true),
+    case(0xffff, RegPair::DE, 0x0001, true),
+    case(0xffff, RegPair::BC, 0x0000, false),
+    case(0x0001, RegPair::BC, 0xffff, true),
+    case(0x0000, RegPair::SP, 0xffff, false),
+    case(0xa7f2, RegPair::SP, 0x8f31, true),
     )]
     fn dad_should_update_carry_bit(mut cpu: Cpu, hl: Address, rp: RegPair, sum: Address, expected: bool) {
         RegPairValue::from((rp, sum)).apply(&mut cpu);
@@ -443,10 +443,10 @@ mod pair_register {
 
     #[rstest_parametrize(
     rp, query, expected,
-    case(Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0x10, 0xa7)")),
-    case(Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x20, 0xe7)")),
-    case(Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0x22, 0xef)")),
-    case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1235")),
+    case(RegPair::BC, (ByteReg::B, ByteReg::C), (0x10, 0xa7)),
+    case(RegPair::DE, (ByteReg::D, ByteReg::E), (0x20, 0xe7)),
+    case(RegPair::HL, (ByteReg::H, ByteReg::L), (0x22, 0xef)),
+    case(RegPair::SP, SP, 0x1235),
     )]
     fn inx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
         cpu.exec(Inx(rp)).unwrap();
@@ -456,13 +456,13 @@ mod pair_register {
 
     #[rstest_parametrize(
     init, rp, query, expected,
-    case(Unwrap("RegPairValue::BC(0x00, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0x01, 0x00)")),
-    case(Unwrap("RegPairValue::BC(0xff, 0xff)"), Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0x00, 0x00)")),
-    case(Unwrap("RegPairValue::DE(0x12, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x13, 0x00)")),
-    case(Unwrap("RegPairValue::DE(0xff, 0xff)"), Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x00, 0x00)")),
-    case(Unwrap("RegPairValue::HL(0xae, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0xaf, 0x00)")),
-    case(Unwrap("RegPairValue::HL(0xff, 0xff)"), Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0x00, 0x00)")),
-    case(Unwrap("RegPairValue::SP(0xffff)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0x0000),
+    case(RegPairValue::BC(0x00, 0xff), RegPair::BC, (ByteReg::B, ByteReg::C), (0x01, 0x00)),
+    case(RegPairValue::BC(0xff, 0xff), RegPair::BC, (ByteReg::B, ByteReg::C), (0x00, 0x00)),
+    case(RegPairValue::DE(0x12, 0xff), RegPair::DE, (ByteReg::D, ByteReg::E), (0x13, 0x00)),
+    case(RegPairValue::DE(0xff, 0xff), RegPair::DE, (ByteReg::D, ByteReg::E), (0x00, 0x00)),
+    case(RegPairValue::HL(0xae, 0xff), RegPair::HL, (ByteReg::H, ByteReg::L), (0xaf, 0x00)),
+    case(RegPairValue::HL(0xff, 0xff), RegPair::HL, (ByteReg::H, ByteReg::L), (0x00, 0x00)),
+    case(RegPairValue::SP(0xffff), RegPair::SP, SP, 0x0000),
     )]
     fn inx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
         where R: QueryResult, Q: CpuQuery<Result=R>
@@ -476,10 +476,10 @@ mod pair_register {
 
     #[rstest_parametrize(
     rp, query, expected,
-    case(Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0x10, 0xa5)")),
-    case(Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x20, 0xe5)")),
-    case(Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0x22, 0xed)")),
-    case(Unwrap("RegPair::SP"), Unwrap("SP"), Unwrap("0x1233")),
+    case(RegPair::BC, (ByteReg::B, ByteReg::C), (0x10, 0xa5)),
+    case(RegPair::DE, (ByteReg::D, ByteReg::E), (0x20, 0xe5)),
+    case(RegPair::HL, (ByteReg::H, ByteReg::L), (0x22, 0xed)),
+    case(RegPair::SP, SP, 0x1233),
     )]
     fn dcx<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPair, query: Q, expected: R) {
         cpu.exec(Dcx(rp)).unwrap();
@@ -489,13 +489,13 @@ mod pair_register {
 
     #[rstest_parametrize(
     init, rp, query, expected,
-    case(Unwrap("RegPairValue::BC(0xff, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0xfe, 0xff)")),
-    case(Unwrap("RegPairValue::BC(0x00, 0x00)"), Unwrap("RegPair::BC"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0xff, 0xff)")),
-    case(Unwrap("RegPairValue::DE(0x12, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x11, 0xff)")),
-    case(Unwrap("RegPairValue::DE(0x00, 0x00)"), Unwrap("RegPair::DE"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0xff, 0xff)")),
-    case(Unwrap("RegPairValue::HL(0xae, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0xad, 0xff)")),
-    case(Unwrap("RegPairValue::HL(0x00, 0x00)"), Unwrap("RegPair::HL"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0xff, 0xff)")),
-    case(Unwrap("RegPairValue::SP(0x0000)"), Unwrap("RegPair::SP"), Unwrap("SP"), 0xffff),
+    case(RegPairValue::BC(0xff, 0x00), RegPair::BC, (ByteReg::B, ByteReg::C), (0xfe, 0xff)),
+    case(RegPairValue::BC(0x00, 0x00), RegPair::BC, (ByteReg::B, ByteReg::C), (0xff, 0xff)),
+    case(RegPairValue::DE(0x12, 0x00), RegPair::DE, (ByteReg::D, ByteReg::E), (0x11, 0xff)),
+    case(RegPairValue::DE(0x00, 0x00), RegPair::DE, (ByteReg::D, ByteReg::E), (0xff, 0xff)),
+    case(RegPairValue::HL(0xae, 0x00), RegPair::HL, (ByteReg::H, ByteReg::L), (0xad, 0xff)),
+    case(RegPairValue::HL(0x00, 0x00), RegPair::HL, (ByteReg::H, ByteReg::L), (0xff, 0xff)),
+    case(RegPairValue::SP(0x0000), RegPair::SP, SP, 0xffff),
     )]
     fn dcx_should_wrap<R, Q>(mut cpu: Cpu, init: RegPairValue, rp: RegPair, query: Q, expected: R)
         where R: QueryResult, Q: CpuQuery<Result=R>
@@ -549,10 +549,10 @@ mod immediate {
 
     #[rstest_parametrize(
     rp, query, expected,
-    case(Unwrap("RegPairValue::BC(0xe4, 0xf1)"), Unwrap("(ByteReg::B, ByteReg::C)"), Unwrap("(0xe4, 0xf1)")),
-    case(Unwrap("RegPairValue::DE(0x20, 0xb1)"), Unwrap("(ByteReg::D, ByteReg::E)"), Unwrap("(0x20, 0xb1)")),
-    case(Unwrap("RegPairValue::HL(0x02, 0xae)"), Unwrap("(ByteReg::H, ByteReg::L)"), Unwrap("(0x02, 0xae)")),
-    case(Unwrap("RegPairValue::SP(0x4321)"), Unwrap("SP"), 0x4321),
+    case(RegPairValue::BC(0xe4, 0xf1), (ByteReg::B, ByteReg::C), (0xe4, 0xf1)),
+    case(RegPairValue::DE(0x20, 0xb1), (ByteReg::D, ByteReg::E), (0x20, 0xb1)),
+    case(RegPairValue::HL(0x02, 0xae), (ByteReg::H, ByteReg::L), (0x02, 0xae)),
+    case(RegPairValue::SP(0x4321), SP, 0x4321),
     )]
     fn lxi<R: QueryResult, Q: CpuQuery<Result=R>>(mut cpu: Cpu, rp: RegPairValue, query: Q, expected: R) {
         cpu.exec(Lxi(rp)).unwrap();
@@ -562,10 +562,10 @@ mod immediate {
 
     #[rstest_parametrize(
     r, val,
-    case(Unwrap("Reg::B"), 0x34),
-    case(Unwrap("Reg::D"), 0xf3),
-    case(Unwrap("Reg::L"), 0x01),
-    case(Unwrap("Reg::M"), 0x54),
+    case(Reg::B, 0x34),
+    case(Reg::D, 0xf3),
+    case(Reg::L, 0x01),
+    case(Reg::M, 0x54),
     )]
     fn mvi_should_store_data_in_register(mut cpu: Cpu, r: Reg, val: Byte) {
         cpu.exec(Mvi(r, val)).unwrap();
@@ -587,21 +587,21 @@ mod immediate {
 
 #[rstest_parametrize(
 init, query, expected,
-case(Unwrap("RegValue::B(0x00)"), Zero, true),
-case(Unwrap("RegValue::B(0x12)"), Zero, false),
-case(Unwrap("RegValue::B(0xff)"), Zero, false),
-case(Unwrap("RegValue::A(0x80)"), Sign, true),
-case(Unwrap("RegValue::A(0xA3)"), Sign, true),
-case(Unwrap("RegValue::A(0xff)"), Sign, true),
-case(Unwrap("RegValue::A(0x00)"), Sign, false),
-case(Unwrap("RegValue::A(0x12)"), Sign, false),
-case(Unwrap("RegValue::A(0x7f)"), Sign, false),
-case(Unwrap("RegValue::D(0x00)"), Parity, true),
-case(Unwrap("RegValue::D(0x03)"), Parity, true),
-case(Unwrap("RegValue::D(0xff)"), Parity, true),
-case(Unwrap("RegValue::D(0x01)"), Parity, false),
-case(Unwrap("RegValue::D(0x1f)"), Parity, false),
-case(Unwrap("RegValue::D(0x37)"), Parity, false),
+case(RegValue::B(0x00), Zero, true),
+case(RegValue::B(0x12), Zero, false),
+case(RegValue::B(0xff), Zero, false),
+case(RegValue::A(0x80), Sign, true),
+case(RegValue::A(0xA3), Sign, true),
+case(RegValue::A(0xff), Sign, true),
+case(RegValue::A(0x00), Sign, false),
+case(RegValue::A(0x12), Sign, false),
+case(RegValue::A(0x7f), Sign, false),
+case(RegValue::D(0x00), Parity, true),
+case(RegValue::D(0x03), Parity, true),
+case(RegValue::D(0xff), Parity, true),
+case(RegValue::D(0x01), Parity, false),
+case(RegValue::D(0x1f), Parity, false),
+case(RegValue::D(0x37), Parity, false),
 )]
 fn static_flags<Q, R>(mut cpu: Cpu, init: RegValue, query: Q, expected: R)
     where R: QueryResult, Q: CpuQuery<Result=R>
@@ -618,14 +618,14 @@ mod single_register {
 
     #[rstest_parametrize(
     init, reg, query, expected,
-    case(Unwrap("RegValue::A(0x33)"), Unwrap("Reg::A"), Unwrap("ByteReg::A"), 0x34),
-    case(Unwrap("RegValue::B(0x00)"), Unwrap("Reg::B"), Unwrap("ByteReg::B"), 0x01),
-    case(Unwrap("RegValue::C(0x23)"), Unwrap("Reg::C"), Unwrap("ByteReg::C"), 0x24),
-    case(Unwrap("RegValue::D(0xaf)"), Unwrap("Reg::D"), Unwrap("ByteReg::D"), 0xb0),
-    case(Unwrap("RegValue::E(0x01)"), Unwrap("Reg::E"), Unwrap("ByteReg::E"), 0x02),
-    case(Unwrap("RegValue::H(0xd1)"), Unwrap("Reg::H"), Unwrap("ByteReg::H"), 0xd2),
-    case(Unwrap("RegValue::L(0x53)"), Unwrap("Reg::L"), Unwrap("ByteReg::L"), 0x54),
-    case(Unwrap("RegValue::M(0x12)"), Unwrap("Reg::M"), Unwrap("ByteReg::M"), 0x13),
+    case(RegValue::A(0x33), Reg::A, ByteReg::A, 0x34),
+    case(RegValue::B(0x00), Reg::B, ByteReg::B, 0x01),
+    case(RegValue::C(0x23), Reg::C, ByteReg::C, 0x24),
+    case(RegValue::D(0xaf), Reg::D, ByteReg::D, 0xb0),
+    case(RegValue::E(0x01), Reg::E, ByteReg::E, 0x02),
+    case(RegValue::H(0xd1), Reg::H, ByteReg::H, 0xd2),
+    case(RegValue::L(0x53), Reg::L, ByteReg::L, 0x54),
+    case(RegValue::M(0x12), Reg::M, ByteReg::M, 0x13),
     )]
     fn inr_should_increment_register<I, Q, R>(mut cpu: Cpu, init: I, reg: Reg, query: Q, expected: R)
         where I: Apply, R: QueryResult, Q: CpuQuery<Result=R>
@@ -733,9 +733,9 @@ mod single_register {
 
     #[rstest_parametrize(
     cmd, init, after,
-    case(Unwrap("Inr(Reg::A)"), Unwrap("RegValue::A(0xa3)"), 0xa4),
-    case(Unwrap("Dcr(Reg::B)"), Unwrap("RegValue::B(0x32)"), 0x31),
-    case(Unwrap("Dcr(Reg::M)"), Unwrap("RegValue::M(0xaf)"), 0xae),
+    case(Inr(Reg::A), RegValue::A(0xa3), 0xa4),
+    case(Dcr(Reg::B), RegValue::B(0x32), 0x31),
+    case(Dcr(Reg::M), RegValue::M(0xaf), 0xae),
     )]
     fn single_register_command<I>(mut cpu: Cpu, cmd: Instruction, init: I, after: Byte)
         where
@@ -782,8 +782,8 @@ mod data_transfer {
 
     #[rstest_parametrize(
     reg_pair,
-    case(Unwrap("RegPair::HL")),
-    case(Unwrap("RegPair::SP")),
+    case(RegPair::HL),
+    case(RegPair::SP),
     )]
     fn stax_should_return_error(mut cpu: Cpu, reg_pair: RegPair) {
         assert!(cpu.exec(Stax(reg_pair)).is_err());
@@ -803,8 +803,8 @@ mod data_transfer {
 
     #[rstest_parametrize(
     reg_pair,
-    case(Unwrap("RegPair::HL")),
-    case(Unwrap("RegPair::SP")),
+    case(RegPair::HL),
+    case(RegPair::SP),
     )]
     fn ldax_should_return_error(mut cpu: Cpu, reg_pair: RegPair) {
         assert!(cpu.exec(Ldax(reg_pair)).is_err());
@@ -852,12 +852,12 @@ mod accumulator {
 
     #[rstest_parametrize(
     start, init, cmd, expected,
-    case(0x12, Unwrap("RegValue::B(0xa0)"), Unwrap("Add(Reg::B)"), 0xb2),
-    case(0x12, Unwrap("()"), Unwrap("Add(Reg::A)"), 0x24),
-    case(0x03, Unwrap("RegValue::E(0xc2)"), Unwrap("Adc(Reg::E)"), 0xc5),
-    case(0x03, Unwrap("(RegValue::E(0xc2), Carry)"), Unwrap("Adc(Reg::E)"), 0xc6),
-    case(0x12, Unwrap("()"), Unwrap("Adi(0xa0)"), 0xb2),
-    case(0x12, Unwrap("Carry"), Unwrap("Aci(0xa0)"), 0xb3),
+    case(0x12, RegValue::B(0xa0), Add(Reg::B), 0xb2),
+    case(0x12, (), Add(Reg::A), 0x24),
+    case(0x03, RegValue::E(0xc2), Adc(Reg::E), 0xc5),
+    case(0x03, (RegValue::E(0xc2), Carry), Adc(Reg::E), 0xc6),
+    case(0x12, (), Adi(0xa0), 0xb2),
+    case(0x12, Carry, Aci(0xa0), 0xb3),
     )]
     fn additions_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
         where
@@ -897,12 +897,12 @@ mod accumulator {
 
     #[rstest_parametrize(
     start, init, cmd, expected,
-    case(0x32, Unwrap("RegValue::B(0x03)"), Unwrap("Sub(Reg::B)"), 0x2f),
-    case(0x12, Unwrap("()"), Unwrap("Sub(Reg::A)"), 0x0),
-    case(0xc2, Unwrap("RegValue::E(0x03)"), Unwrap("Sbb(Reg::E)"), 0xbf),
-    case(0xc2, Unwrap("(RegValue::E(0x03), Carry)"), Unwrap("Sbb(Reg::E)"), 0xbe),
-    case(0x32, Unwrap("()"), Unwrap("Sui(0x3)"), 0x2f),
-    case(0x32, Unwrap("Carry"), Unwrap("Sbi(0x2)"), 0x2f),
+    case(0x32, RegValue::B(0x03), Sub(Reg::B), 0x2f),
+    case(0x12, (), Sub(Reg::A), 0x0),
+    case(0xc2, RegValue::E(0x03), Sbb(Reg::E), 0xbf),
+    case(0xc2, (RegValue::E(0x03), Carry), Sbb(Reg::E), 0xbe),
+    case(0x32, (), Sui(0x3), 0x2f),
+    case(0x32, Carry, Sbi(0x2), 0x2f),
     )]
     fn subtraction_ops_result<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
         where
@@ -962,11 +962,11 @@ mod accumulator {
 
     #[rstest_parametrize(
     start, init, cmd, expected,
-    case(0xa6, Unwrap("RegValue::L(0xa2)"), Unwrap("Xra(Reg::L)"), 0x04),
-    case(0x81, Unwrap("RegValue::H(0x7e)"), Unwrap("Ora(Reg::H)"), 0xff),
-    case(0xae, Unwrap("()"), Unwrap("Ani(0x9b)"), 0x8a),
-    case(0xa6, Unwrap("()"), Unwrap("Xri(0xa2)"), 0x04),
-    case(0x81, Unwrap("()"), Unwrap("Ori(0x7e)"), 0xff),
+    case(0xa6, RegValue::L(0xa2), Xra(Reg::L), 0x04),
+    case(0x81, RegValue::H(0x7e), Ora(Reg::H), 0xff),
+    case(0xae, (), Ani(0x9b), 0x8a),
+    case(0xa6, (), Xri(0xa2), 0x04),
+    case(0x81, (), Ori(0x7e), 0xff),
     )]
     fn bit_logic_integration<I>(mut cpu: Cpu, start: Byte, init: I, cmd: Instruction, expected: Byte)
         where
@@ -1000,12 +1000,12 @@ mod accumulator {
 
     #[rstest_parametrize(
     a, init, cmd, carry,
-    case(0x10, Unwrap("RegValue::B(0x12)"), Unwrap("Cmp(Reg::B)"), true),
-    case(0x10, Unwrap("RegValue::E(0x0f)"), Unwrap("Cmp(Reg::E)"), false),
-    case(0x10, Unwrap("RegValue::B(0x82)"), Unwrap("Cmp(Reg::B)"), true),
-    case(0x10, Unwrap("()"), Unwrap("Cpi(0x12)"), true),
-    case(0x10, Unwrap("()"), Unwrap("Cpi(0x0f)"), false),
-    case(0x10, Unwrap("()"), Unwrap("Cpi(0x82)"), true),
+    case(0x10, RegValue::B(0x12), Cmp(Reg::B), true),
+    case(0x10, RegValue::E(0x0f), Cmp(Reg::E), false),
+    case(0x10, RegValue::B(0x82), Cmp(Reg::B), true),
+    case(0x10, (), Cpi(0x12), true),
+    case(0x10, (), Cpi(0x0f), false),
+    case(0x10, (), Cpi(0x82), true),
     )]
     fn compare_ops<I: Apply>(mut cpu: Cpu, a: Byte, init: I, cmd: Instruction, carry: bool) {
         cpu.state.set_a(a);
@@ -1018,13 +1018,13 @@ mod accumulator {
 
     #[rstest_parametrize(
     cmd, a, b,
-    case(Unwrap("Add(Reg::B)"), 0xfe, 0x01),
-    case(Unwrap("Adc(Reg::B)"), 0xfe, 0x01),
-    case(Unwrap("Sub(Reg::B)"), 0x01, 0x02),
-    case(Unwrap("Sbb(Reg::B)"), 0x01, 0x02),
-    case(Unwrap("Ana(Reg::B)"), 0xfe, 0xf6),
-    case(Unwrap("Xra(Reg::B)"), 0xfe, 0x07),
-    case(Unwrap("Ora(Reg::B)"), 0xfe, 0x07),
+    case(Add(Reg::B), 0xfe, 0x01),
+    case(Adc(Reg::B), 0xfe, 0x01),
+    case(Sub(Reg::B), 0x01, 0x02),
+    case(Sbb(Reg::B), 0x01, 0x02),
+    case(Ana(Reg::B), 0xfe, 0xf6),
+    case(Xra(Reg::B), 0xfe, 0x07),
+    case(Ora(Reg::B), 0xfe, 0x07),
     )]
     fn should_update_flags(mut cpu: Cpu, cmd: Instruction, a: Byte, b: Byte) {
         cpu.state.set_a(a);
@@ -1040,9 +1040,9 @@ mod accumulator {
 
     #[rstest_parametrize(
     cmd,
-    case(Unwrap("Ana(Reg::B)")),
-    case(Unwrap("Xra(Reg::B)")),
-    case(Unwrap("Ora(Reg::B)")),
+    case(Ana(Reg::B)),
+    case(Xra(Reg::B)),
+    case(Ora(Reg::B)),
     )]
     fn should_reset_carry_flag(mut cpu: Cpu, cmd: Instruction) {
         cpu.state.set_a(0xae);
@@ -1207,22 +1207,22 @@ fn jump_should_load_pc(mut cpu: Cpu) {
 
 #[rstest_parametrize(
 start, init, cmd, expected,
-case(0x3202, Carry, Unwrap("J(CondFlag::C, 0xa030)"), 0xa030),
-case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::C, 0xa030)"), 0x3202),
-case(0x3202, Carry, Unwrap("J(CondFlag::NC, 0xa030)"), 0x3202),
-case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::NC, 0xa030)"), 0xa030),
-case(0x3202, Zero, Unwrap("J(CondFlag::Z, 0xa030)"), 0xa030),
-case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::Z, 0xa030)"), 0x3202),
-case(0x3202, Zero, Unwrap("J(CondFlag::NZ, 0xa030)"), 0x3202),
-case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::NZ, 0xa030)"), 0xa030),
-case(0x3202, Sign, Unwrap("J(CondFlag::M, 0xa030)"), 0xa030),
-case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::M, 0xa030)"), 0x3202),
-case(0x3202, Sign, Unwrap("J(CondFlag::P, 0xa030)"), 0x3202),
-case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::P, 0xa030)"), 0xa030),
-case(0x3202, Parity, Unwrap("J(CondFlag::PE, 0xa030)"), 0xa030),
-case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::PE, 0xa030)"), 0x3202),
-case(0x3202, Parity, Unwrap("J(CondFlag::PO, 0xa030)"), 0x3202),
-case(0x3202, Unwrap("()"), Unwrap("J(CondFlag::PO, 0xa030)"), 0xa030),
+case(0x3202, Carry, J(CondFlag::C, 0xa030), 0xa030),
+case(0x3202, (), J(CondFlag::C, 0xa030), 0x3202),
+case(0x3202, Carry, J(CondFlag::NC, 0xa030), 0x3202),
+case(0x3202, (), J(CondFlag::NC, 0xa030), 0xa030),
+case(0x3202, Zero, J(CondFlag::Z, 0xa030), 0xa030),
+case(0x3202, (), J(CondFlag::Z, 0xa030), 0x3202),
+case(0x3202, Zero, J(CondFlag::NZ, 0xa030), 0x3202),
+case(0x3202, (), J(CondFlag::NZ, 0xa030), 0xa030),
+case(0x3202, Sign, J(CondFlag::M, 0xa030), 0xa030),
+case(0x3202, (), J(CondFlag::M, 0xa030), 0x3202),
+case(0x3202, Sign, J(CondFlag::P, 0xa030), 0x3202),
+case(0x3202, (), J(CondFlag::P, 0xa030), 0xa030),
+case(0x3202, Parity, J(CondFlag::PE, 0xa030), 0xa030),
+case(0x3202, (), J(CondFlag::PE, 0xa030), 0x3202),
+case(0x3202, Parity, J(CondFlag::PO, 0xa030), 0x3202),
+case(0x3202, (), J(CondFlag::PO, 0xa030), 0xa030),
 )]
 fn jump_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
                         cmd: Instruction, expected: Address)
@@ -1287,22 +1287,22 @@ fn call_should_change_pc_and_push_return_address_on_stack(mut cpu: Cpu) {
 
 #[rstest_parametrize(
 start, init, cmd, expected,
-case(0x3202, Carry, Unwrap("C(CondFlag::C, 0xa030)"), 0xa030),
-case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::C, 0xa030)"), 0x3202),
-case(0x3202, Carry, Unwrap("C(CondFlag::NC, 0xa030)"), 0x3202),
-case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::NC, 0xa030)"), 0xa030),
-case(0x3202, Zero, Unwrap("C(CondFlag::Z, 0xa030)"), 0xa030),
-case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::Z, 0xa030)"), 0x3202),
-case(0x3202, Zero, Unwrap("C(CondFlag::NZ, 0xa030)"), 0x3202),
-case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::NZ, 0xa030)"), 0xa030),
-case(0x3202, Sign, Unwrap("C(CondFlag::M, 0xa030)"), 0xa030),
-case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::M, 0xa030)"), 0x3202),
-case(0x3202, Sign, Unwrap("C(CondFlag::P, 0xa030)"), 0x3202),
-case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::P, 0xa030)"), 0xa030),
-case(0x3202, Parity, Unwrap("C(CondFlag::PE, 0xa030)"), 0xa030),
-case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::PE, 0xa030)"), 0x3202),
-case(0x3202, Parity, Unwrap("C(CondFlag::PO, 0xa030)"), 0x3202),
-case(0x3202, Unwrap("()"), Unwrap("C(CondFlag::PO, 0xa030)"), 0xa030),
+case(0x3202, Carry, C(CondFlag::C, 0xa030), 0xa030),
+case(0x3202, (), C(CondFlag::C, 0xa030), 0x3202),
+case(0x3202, Carry, C(CondFlag::NC, 0xa030), 0x3202),
+case(0x3202, (), C(CondFlag::NC, 0xa030), 0xa030),
+case(0x3202, Zero, C(CondFlag::Z, 0xa030), 0xa030),
+case(0x3202, (), C(CondFlag::Z, 0xa030), 0x3202),
+case(0x3202, Zero, C(CondFlag::NZ, 0xa030), 0x3202),
+case(0x3202, (), C(CondFlag::NZ, 0xa030), 0xa030),
+case(0x3202, Sign, C(CondFlag::M, 0xa030), 0xa030),
+case(0x3202, (), C(CondFlag::M, 0xa030), 0x3202),
+case(0x3202, Sign, C(CondFlag::P, 0xa030), 0x3202),
+case(0x3202, (), C(CondFlag::P, 0xa030), 0xa030),
+case(0x3202, Parity, C(CondFlag::PE, 0xa030), 0xa030),
+case(0x3202, (), C(CondFlag::PE, 0xa030), 0x3202),
+case(0x3202, Parity, C(CondFlag::PO, 0xa030), 0x3202),
+case(0x3202, (), C(CondFlag::PO, 0xa030), 0xa030),
 )]
 fn call_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
                         cmd: Instruction, expected: Address)
@@ -1348,22 +1348,22 @@ fn ret_should_walk_the_stack(mut cpu: Cpu) {
 
 #[rstest_parametrize(
 start, addr, init, cmd, expected,
-case(0x3202, 0xa030, Carry, Unwrap("R(CondFlag::C)"), 0xa030),
-case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::C)"), 0x3202),
-case(0x3202, 0xa030, Carry, Unwrap("R(CondFlag::NC)"), 0x3202),
-case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::NC)"), 0xa030),
-case(0x3202, 0xa030, Zero, Unwrap("R(CondFlag::Z)"), 0xa030),
-case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::Z)"), 0x3202),
-case(0x3202, 0xa030, Zero, Unwrap("R(CondFlag::NZ)"), 0x3202),
-case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::NZ)"), 0xa030),
-case(0x3202, 0xa030, Sign, Unwrap("R(CondFlag::M)"), 0xa030),
-case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::M)"), 0x3202),
-case(0x3202, 0xa030, Sign, Unwrap("R(CondFlag::P)"), 0x3202),
-case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::P)"), 0xa030),
-case(0x3202, 0xa030, Parity, Unwrap("R(CondFlag::PE)"), 0xa030),
-case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::PE)"), 0x3202),
-case(0x3202, 0xa030, Parity, Unwrap("R(CondFlag::PO)"), 0x3202),
-case(0x3202, 0xa030, Unwrap("()"), Unwrap("R(CondFlag::PO)"), 0xa030),
+case(0x3202, 0xa030, Carry, R(CondFlag::C), 0xa030),
+case(0x3202, 0xa030, (), R(CondFlag::C), 0x3202),
+case(0x3202, 0xa030, Carry, R(CondFlag::NC), 0x3202),
+case(0x3202, 0xa030, (), R(CondFlag::NC), 0xa030),
+case(0x3202, 0xa030, Zero, R(CondFlag::Z), 0xa030),
+case(0x3202, 0xa030, (), R(CondFlag::Z), 0x3202),
+case(0x3202, 0xa030, Zero, R(CondFlag::NZ), 0x3202),
+case(0x3202, 0xa030, (), R(CondFlag::NZ), 0xa030),
+case(0x3202, 0xa030, Sign, R(CondFlag::M), 0xa030),
+case(0x3202, 0xa030, (), R(CondFlag::M), 0x3202),
+case(0x3202, 0xa030, Sign, R(CondFlag::P), 0x3202),
+case(0x3202, 0xa030, (), R(CondFlag::P), 0xa030),
+case(0x3202, 0xa030, Parity, R(CondFlag::PE), 0xa030),
+case(0x3202, 0xa030, (), R(CondFlag::PE), 0x3202),
+case(0x3202, 0xa030, Parity, R(CondFlag::PO), 0x3202),
+case(0x3202, 0xa030, (), R(CondFlag::PO), 0xa030),
 )]
 fn return_conditionals<A>(mut cpu: Cpu, start: Address, addr: Address, init: A,
                           cmd: Instruction, expected: Address)
@@ -1449,15 +1449,15 @@ fn cma_should_not_change_flags(mut cpu: Cpu) {
 
 #[rstest_parametrize(
 state, after,
-case(Unwrap("(0x9b, false, false)"), Unwrap("(0x01, true, true)")),
-case(Unwrap("(0x00, false, false)"), Unwrap("(0x00, false, false)")),
-case(Unwrap("(0x99, false, false)"), Unwrap("(0x99, false, false)")),
-case(Unwrap("(0x0a, false, false)"), Unwrap("(0x10, false, true)")),
-case(Unwrap("(0xa0, false, false)"), Unwrap("(0x00, true, false)")),
-case(Unwrap("(0x0b, false, false)"), Unwrap("(0x11, false, true)")),
-case(Unwrap("(0x75, true, true)"), Unwrap("(0xdb, false, false)")),
-case(Unwrap("(0xff, false, false)"), Unwrap("(0x05, false, true)")),
-case(Unwrap("(0x99, true, true)"), Unwrap("(0xff, false, false)")),
+case((0x9b, false, false), (0x01, true, true)),
+case((0x00, false, false), (0x00, false, false)),
+case((0x99, false, false), (0x99, false, false)),
+case((0x0a, false, false), (0x10, false, true)),
+case((0xa0, false, false), (0x00, true, false)),
+case((0x0b, false, false), (0x11, false, true)),
+case((0x75, true, true), (0xdb, false, false)),
+case((0xff, false, false), (0x05, false, true)),
+case((0x99, true, true), (0xff, false, false)),
 )]
 fn daa_should_adjust_accumulator(mut cpu: Cpu,
                                  state: (Byte, bool, bool),
@@ -1491,57 +1491,57 @@ fn daa_should_update_static_flags(mut cpu: Cpu) {
 
 #[rstest_parametrize(
 init, cmd, expected,
-case(Unwrap("RegValue::B(0xaf)"), Unwrap("Inr(Reg::B)"), true),
-case(Unwrap("RegValue::D(0xf8)"), Unwrap("Inr(Reg::D)"), false),
-case(Unwrap("RegValue::D(0xff)"), Unwrap("Inr(Reg::D)"), true),
-case(Unwrap("RegValue::D(0x0f)"), Unwrap("Inr(Reg::D)"), true),
-case(Unwrap("RegValue::B(0x0e)"), Unwrap("Inr(Reg::B)"), false),
-case(Unwrap("RegValue::E(0x30)"), Unwrap("Dcr(Reg::E)"), true),
-case(Unwrap("RegValue::M(0x43)"), Unwrap("Dcr(Reg::M)"), false),
-case(Unwrap("RegValue::M(0x00)"), Unwrap("Dcr(Reg::M)"), true),
-case(Unwrap("RegValue::C(0xa0)"), Unwrap("Dcr(Reg::C)"), true),
-case(Unwrap("RegValue::C(0x01)"), Unwrap("Dcr(Reg::C)"), false),
-case(Unwrap("(RegValue::A(0x3d), RegValue::C(0x03))"), Unwrap("Add(Reg::C)"), true),
-case(Unwrap("(RegValue::A(0x12), RegValue::B(0xf2))"), Unwrap("Add(Reg::B)"), false),
-case(Unwrap("(RegValue::A(0xa4), RegValue::D(0x0d))"), Unwrap("Add(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x0f), RegValue::D(0x01))"), Unwrap("Add(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x0f), RegValue::H(0xa0))"), Unwrap("Add(Reg::H)"), false),
-case(Unwrap("(RegValue::A(0x3d), (RegValue::C(0x02), Carry))"), Unwrap("Adc(Reg::C)"), true),
-case(Unwrap("(RegValue::A(0x12), (RegValue::B(0xfc), Carry))"), Unwrap("Adc(Reg::B)"), false),
-case(Unwrap("(RegValue::A(0xa4), (RegValue::D(0x0c), Carry))"), Unwrap("Adc(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x0f), (RegValue::D(0x00), Carry))"), Unwrap("Adc(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x0e), (RegValue::H(0xa0), Carry))"), Unwrap("Adc(Reg::H)"), false),
-case(Unwrap("(RegValue::A(0x37), RegValue::C(0x08))"), Unwrap("Sub(Reg::C)"), true),
-case(Unwrap("(RegValue::A(0x12), RegValue::B(0xf2))"), Unwrap("Sub(Reg::B)"), false),
-case(Unwrap("(RegValue::A(0xa4), RegValue::D(0x05))"), Unwrap("Sub(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x00), RegValue::D(0x01))"), Unwrap("Sub(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x01), RegValue::H(0xa0))"), Unwrap("Sub(Reg::H)"), false),
-case(Unwrap("(RegValue::A(0x37), (RegValue::C(0x07), Carry))"), Unwrap("Sbb(Reg::C)"), true),
-case(Unwrap("(RegValue::A(0x12), (RegValue::B(0xf1), Carry))"), Unwrap("Sbb(Reg::B)"), false),
-case(Unwrap("(RegValue::A(0xa4), (RegValue::D(0x04), Carry))"), Unwrap("Sbb(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x00), (RegValue::D(0x00), Carry))"), Unwrap("Sbb(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x01), (RegValue::H(0x9f), Carry))"), Unwrap("Sbb(Reg::H)"), false),
-case(Unwrap("(RegValue::A(0x37), RegValue::C(0x08))"), Unwrap("Cmp(Reg::C)"), true),
-case(Unwrap("(RegValue::A(0x12), RegValue::B(0xf2))"), Unwrap("Cmp(Reg::B)"), false),
-case(Unwrap("(RegValue::A(0xa4), RegValue::D(0x05))"), Unwrap("Cmp(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x00), RegValue::D(0x01))"), Unwrap("Cmp(Reg::D)"), true),
-case(Unwrap("(RegValue::A(0x01), RegValue::H(0xa0))"), Unwrap("Cmp(Reg::H)"), false),
-case(Unwrap("RegValue::A(0x3d)"), Unwrap("Adi(0x03)"), true),
-case(Unwrap("RegValue::A(0x12)"), Unwrap("Adi(0xf2)"), false),
-case(Unwrap("RegValue::A(0xa4)"), Unwrap("Adi(0x0d)"), true),
-case(Unwrap("RegValue::A(0x0f)"), Unwrap("Adi(0x01)"), true),
-case(Unwrap("RegValue::A(0x0f)"), Unwrap("Adi(0xa0)"), false),
-case(Unwrap("(RegValue::A(0x3c), Carry)"), Unwrap("Aci(0x03)"), true),
-case(Unwrap("RegValue::A(0x3c)"), Unwrap("Aci(0x03)"), false),
-case(Unwrap("RegValue::A(0x37)"), Unwrap("Sui(0x08)"), true),
-case(Unwrap("RegValue::A(0x12)"), Unwrap("Sui(0xf2)"), false),
-case(Unwrap("(RegValue::A(0x37), Carry)"), Unwrap("Sbi(0x07)"), true),
-case(Unwrap("(RegValue::A(0x12), Carry)"), Unwrap("Sbi(0xf1)"), false),
-case(Unwrap("RegValue::A(0x37)"), Unwrap("Cpi(0x08)"), true),
-case(Unwrap("RegValue::A(0x12)"), Unwrap("Cpi(0xf2)"), false),
-case(Unwrap("RegValue::A(0xa4)"), Unwrap("Cpi(0x05)"), true),
-case(Unwrap("RegValue::A(0x00)"), Unwrap("Cpi(0x01)"), true),
-case(Unwrap("RegValue::A(0x01)"), Unwrap("Cpi(0xa0)"), false),
+case(RegValue::B(0xaf), Inr(Reg::B), true),
+case(RegValue::D(0xf8), Inr(Reg::D), false),
+case(RegValue::D(0xff), Inr(Reg::D), true),
+case(RegValue::D(0x0f), Inr(Reg::D), true),
+case(RegValue::B(0x0e), Inr(Reg::B), false),
+case(RegValue::E(0x30), Dcr(Reg::E), true),
+case(RegValue::M(0x43), Dcr(Reg::M), false),
+case(RegValue::M(0x00), Dcr(Reg::M), true),
+case(RegValue::C(0xa0), Dcr(Reg::C), true),
+case(RegValue::C(0x01), Dcr(Reg::C), false),
+case((RegValue::A(0x3d), RegValue::C(0x03)), Add(Reg::C), true),
+case((RegValue::A(0x12), RegValue::B(0xf2)), Add(Reg::B), false),
+case((RegValue::A(0xa4), RegValue::D(0x0d)), Add(Reg::D), true),
+case((RegValue::A(0x0f), RegValue::D(0x01)), Add(Reg::D), true),
+case((RegValue::A(0x0f), RegValue::H(0xa0)), Add(Reg::H), false),
+case((RegValue::A(0x3d), (RegValue::C(0x02), Carry)), Adc(Reg::C), true),
+case((RegValue::A(0x12), (RegValue::B(0xfc), Carry)), Adc(Reg::B), false),
+case((RegValue::A(0xa4), (RegValue::D(0x0c), Carry)), Adc(Reg::D), true),
+case((RegValue::A(0x0f), (RegValue::D(0x00), Carry)), Adc(Reg::D), true),
+case((RegValue::A(0x0e), (RegValue::H(0xa0), Carry)), Adc(Reg::H), false),
+case((RegValue::A(0x37), RegValue::C(0x08)), Sub(Reg::C), true),
+case((RegValue::A(0x12), RegValue::B(0xf2)), Sub(Reg::B), false),
+case((RegValue::A(0xa4), RegValue::D(0x05)), Sub(Reg::D), true),
+case((RegValue::A(0x00), RegValue::D(0x01)), Sub(Reg::D), true),
+case((RegValue::A(0x01), RegValue::H(0xa0)), Sub(Reg::H), false),
+case((RegValue::A(0x37), (RegValue::C(0x07), Carry)), Sbb(Reg::C), true),
+case((RegValue::A(0x12), (RegValue::B(0xf1), Carry)), Sbb(Reg::B), false),
+case((RegValue::A(0xa4), (RegValue::D(0x04), Carry)), Sbb(Reg::D), true),
+case((RegValue::A(0x00), (RegValue::D(0x00), Carry)), Sbb(Reg::D), true),
+case((RegValue::A(0x01), (RegValue::H(0x9f), Carry)), Sbb(Reg::H), false),
+case((RegValue::A(0x37), RegValue::C(0x08)), Cmp(Reg::C), true),
+case((RegValue::A(0x12), RegValue::B(0xf2)), Cmp(Reg::B), false),
+case((RegValue::A(0xa4), RegValue::D(0x05)), Cmp(Reg::D), true),
+case((RegValue::A(0x00), RegValue::D(0x01)), Cmp(Reg::D), true),
+case((RegValue::A(0x01), RegValue::H(0xa0)), Cmp(Reg::H), false),
+case(RegValue::A(0x3d), Adi(0x03), true),
+case(RegValue::A(0x12), Adi(0xf2), false),
+case(RegValue::A(0xa4), Adi(0x0d), true),
+case(RegValue::A(0x0f), Adi(0x01), true),
+case(RegValue::A(0x0f), Adi(0xa0), false),
+case((RegValue::A(0x3c), Carry), Aci(0x03), true),
+case(RegValue::A(0x3c), Aci(0x03), false),
+case(RegValue::A(0x37), Sui(0x08), true),
+case(RegValue::A(0x12), Sui(0xf2), false),
+case((RegValue::A(0x37), Carry), Sbi(0x07), true),
+case((RegValue::A(0x12), Carry), Sbi(0xf1), false),
+case(RegValue::A(0x37), Cpi(0x08), true),
+case(RegValue::A(0x12), Cpi(0xf2), false),
+case(RegValue::A(0xa4), Cpi(0x05), true),
+case(RegValue::A(0x00), Cpi(0x01), true),
+case(RegValue::A(0x01), Cpi(0xa0), false),
 )]
 fn should_affect_aux_carry<I: Apply>(mut cpu: Cpu, init: I, cmd: Instruction, expected: bool) {
     init.apply(&mut cpu);
@@ -1552,8 +1552,8 @@ fn should_affect_aux_carry<I: Apply>(mut cpu: Cpu, init: I, cmd: Instruction, ex
 }
 
 #[rstest_parametrize(
-init, cmd, expected,
-case(Unwrap("RegValue::B(0xaf)"), Unwrap("Xra(Reg::B)")),
+init, cmd,
+case(RegValue::B(0xaf), Xra(Reg::B)),
 )]
 fn should_always_reset_aux_carry<I: Apply>(mut cpu: Cpu, init: I, cmd: Instruction) {
     init.apply(&mut cpu);
