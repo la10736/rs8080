@@ -11,4 +11,4 @@ minifb = "*"
 structopt="*"
 
 [dev-dependencies]
-rstest = { git = "https://github.com/la10736/rstest" }
+rstest = "0.3"

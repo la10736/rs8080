@@ -8,11 +8,12 @@ use super::Cpu as GenCpu;
 use io_bus::{VoidIO, test::Loopback};
 use hook::NoneHook;
 
-use rstest::{rstest, rstest_parametrize};
+use rstest::*;
 
 type Cpu = GenCpu<PlainMemory, VoidIO, VoidIO, NoneHook>;
 type PlainMemoryCpu<O, I> = GenCpu<PlainMemory, O, I, NoneHook>;
 
+#[fixture]
 fn cpu() -> Cpu {
     let state = State {
         b: 0x10.into(),

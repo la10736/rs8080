@@ -266,10 +266,11 @@ Mirror:
 #[cfg(test)]
 mod test {
     use super::*;
-    use rstest::{rstest_parametrize};
+    use rstest::{rstest_parametrize, fixture};
     use rs8080::Address;
     use rs8080::Byte;
 
+    #[fixture]
     fn zmem() -> SIMmu {
         SIMmu::default()
     }
@@ -339,15 +340,16 @@ mod test {
     mod mirror {
         use super::*;
 
+        #[fixture]
         fn mirror() -> Mirror {
             Mirror::default()
         }
 
         #[rstest_parametrize(
-        address, value,
-        case(0x4000, 0xE1),
-        case(0x5420, 0xA5),
-        case(0xFFFF, 0x1A),
+        address,
+        case(0x4000),
+        case(0x5420),
+        case(0xFFFF),
         )]
         fn read_should_return_error(mirror: Mirror, address: Address) {
             assert!(mirror.read_byte(address).is_err());

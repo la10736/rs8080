@@ -192,8 +192,9 @@ impl OutputBus for IO {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rstest::{rstest_parametrize, rstest};
+    use rstest::*;
 
+    #[fixture]
     fn io() -> IO {
         IO::default()
     }
