@@ -1,13 +1,12 @@
 #![feature(fn_traits)]
-extern crate minifb;
 extern crate rs8080;
 #[cfg(test)]
 extern crate rstest;
 extern crate simple_logger;
-//#[macro_use]
 extern crate structopt;
 #[macro_use]
 extern crate log;
+extern crate sdl2;
 
 use std::{
     fs::File,
@@ -18,7 +17,6 @@ use std::{
     sync::mpsc::Sender,
     time,
 };
-use minifb::{Key, Scale, Window, WindowOptions};
 use structopt::StructOpt;
 
 use rs8080::{
@@ -29,9 +27,10 @@ use rs8080::{
     hook::NoneHook
 };
 
+mod glutils;
+
 mod si;
 pub mod graphics;
-mod key;
 
 use si::{
     io::{self, IO},
@@ -39,7 +38,6 @@ use si::{
     gpu::Gpu
 };
 use graphics::{BLACK, Canvas, Rect, WHITE};
-use key::{ActiveKey, DirectKey, DKey, FlipFlopKey, WindowKey};
 
 type Cpu = Cpu8080<SIMmu, Rc<IO>, Rc<IO>, NoneHook>;
 
@@ -91,6 +89,13 @@ struct SiOpt {
     verbose: u8,
 }
 
+pub struct VideoConfig {
+    pub window_title: String,
+    pub width: isize,
+    pub height: isize,
+    pub fps: isize,
+}
+
 enum Command {
     Dump,
     Pause,
@@ -100,6 +105,106 @@ enum Command {
     PrintStat(bool),
     Fast(bool),
 }
+
+
+pub struct Output {
+    vcfg: Rc<VideoConfig>,
+    context: sdl2::Sdl,
+    video: Option<Video>,
+    framecount: i64,
+}
+
+impl Output {
+    pub fn new(vcfg: VideoConfig) -> Result<Output, String> {
+        Ok(Output {
+            vcfg: Rc::new(vcfg),
+            context: sdl2::init()?,
+            video: None,
+            framecount: 0,
+        })
+    }
+
+    pub fn enable_video(&mut self) -> Result<(), String> {
+        self.video = Some(Video::new(self.vcfg.clone(), &self.context)?);
+        Ok(())
+    }
+}
+
+use sdl2::video::{GLContext, GLProfile, Window};
+use sdl2::VideoSubsystem;
+use std::time::{Duration, Instant};
+use glutils::{SurfaceRenderer, GfxBuffer};
+
+struct Video {
+    video: VideoSubsystem,
+    window: Window,
+    renderer: SurfaceRenderer,
+    _gl_context: GLContext,
+
+    cfg: Rc<VideoConfig>,
+    fps_clock: Instant,
+    fps_counter: isize,
+}
+
+impl Video {
+    fn new(cfg: Rc<VideoConfig>, context: &sdl2::Sdl) -> Result<Video, String> {
+        let video = context
+            .video()
+            .or_else(|e| Err(format!("error creating video subsystem: {:?}", e)))?;
+
+        // Request OpenGL Core profile (for GL 3.2 extensions, required by imgui-opengl-renderer).
+        {
+            let gl_attr = video.gl_attr();
+            gl_attr.set_context_profile(GLProfile::Core);
+            gl_attr.set_context_version(3, 0);
+        }
+
+        let window = video
+            .window(&cfg.window_title, 640 * 2, 480 * 2)
+            .resizable()
+            .position_centered()
+            .opengl()
+            .allow_highdpi()
+            .build()
+            .or_else(|e| Err(format!("error creating window: {:?}", e)))?;
+
+        let gl_context = window
+            .gl_create_context()
+            .expect("couldn't create GL context");
+
+        let video2 = video.clone();
+        let renderer = SurfaceRenderer::new(move |s| video2.gl_get_proc_address(s) as _);
+
+        Ok(Video {
+            cfg,
+            video,
+            window,
+            renderer,
+            _gl_context: gl_context,
+            fps_clock: Instant::now(),
+            fps_counter: 0,
+        })
+    }
+
+    fn render_frame(&mut self, frame: &GfxBuffer) {
+        self.renderer.render(frame);
+    }
+
+    fn update_fps(&mut self) {
+        self.fps_counter += 1;
+        if self.fps_clock.elapsed() >= Duration::new(1, 0) {
+            self.window
+                .set_title(&format!(
+                    "{} - {} FPS",
+                    &self.cfg.window_title, self.fps_counter
+                ))
+                .unwrap();
+            self.fps_counter = 0;
+            self.fps_clock += Duration::new(1, 0);
+        }
+    }
+}
+
 
 fn main() {
     let opt = SiOpt::from_args();
@@ -132,17 +237,27 @@ fn main() {
     let w = H + 2 * H_MARGIN;
     let h = W + 2 * W_MARGIN;
 
-    let mut window = Window::new("Space Invaders - ESC to exit",
-                                 w,
-                                 h,
-                                 WindowOptions {
-                                     borderless: true,
-                                     title: false,
-                                     resize: false,
-                                     scale: Scale::FitScreen,
-                                 }).unwrap_or_else(|e| {
-        panic!("{}", e);
-    });
+    let mut out = Output::new(
+        VideoConfig {
+            window_title: "Space Invaders Emulator".into(),
+            width: w as isize,
+            height: h as isize,
+            fps: 60,
+        },
+    ).expect("Cannot create output window");
+    out.enable_video().expect("Cannot enable video");
+
+//    let mut window = Window::new("Space Invaders - ESC to exit",
+//                                 w,
+//                                 h,
+//                                 WindowOptions {
+//                                     borderless: true,
+//                                     title: false,
+//                                     resize: false,
+//                                     scale: Scale::FitScreen,
+//                                 }).unwrap_or_else(|e| {
+//        panic!("{}", e);
+//    });
     let mut fb = vec![0; w * h];
 
     let mut start = time::Instant::now();
@@ -157,13 +272,13 @@ fn main() {
     let mut should_dump_stat = opt.dump_stats;
     let mut fast = opt.fast;
 
-    let mut keys = keys(io, tx, fast, should_print_frame, should_dump_stat);
+//    let mut keys = keys(io, tx, fast, should_print_frame, should_dump_stat);
 
     loop {
-        if !window.is_open() || window.is_key_down(Key::Escape) {
-            debug!("Should terminate");
-            break;
-        }
+//        if !window.is_open() || window.is_key_down(Key::Escape) {
+//            debug!("Should terminate");
+//            break;
+//        }
 
         if let Ok(cmd) = rx.try_recv() {
             match cmd {
@@ -185,13 +300,13 @@ fn main() {
             }
         }
 
-        keys_apply(&mut window, &mut keys);
+//        keys_apply(&mut window, &mut keys);
 
         if pause_in_frames != Some(0) {
             clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
                 .unwrap_or_else(|e| critical(&cpu, e));
 
-            window.update_with_buffer(&fb).unwrap();
+//            window.update_with_buffer(&fb).unwrap();
 
             if should_print_frame {
                 info!("Frame nr: {}", frames);
@@ -216,7 +331,7 @@ fn main() {
             }
         } else {
             std::thread::sleep(time::Duration::from_millis(100));
-            window.update();
+//            window.update();
         }
     }
     if should_dump_stat {
@@ -256,67 +371,67 @@ fn cpu_run_till(cpu: &mut Cpu, mut clocks: u64, expected_clocks: u64) -> Result<
     Ok(clocks)
 }
 
-fn keys_apply(window: &mut Window, keys: &mut Vec<Box<WindowKey>>) {
-    keys.iter_mut().for_each(|b| { b.update(&window); });
-}
-
-fn keys(io: Rc<IO>, tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<WindowKey>> {
-    let mut buttons = si_keys(io);
-    buttons.extend(ui_keys(tx, fast, should_print_frame, should_print_late_stat).into_iter());
-    buttons
-}
-
-fn ui_keys(tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
-    let pause = ui_key(Key::P,
-                       |s| if s { Command::Pause } else { Command::Continue },
-                       false, tx.clone());
-    let print_frame = ui_key(Key::F,
-                             |s| Command::PrintFrames(s),
-                             should_print_frame, tx.clone());
-    let print_stat = ui_key(Key::G,
-                            |s| Command::PrintStat(s),
-                            should_print_late_stat, tx.clone());
-    let dump_state = ui_key(Key::D,
-                            |_| Command::Dump,
-                            false, tx.clone());
-    let fast = ui_key(Key::NumPadPlus,
-                      |s| Command::Fast(s),
-                      fast, tx.clone());
-    let mut keys = vec![pause, print_frame, print_stat, dump_state, fast];
-    let steps_key: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)];
-    keys.extend(steps_key.into_iter().map(
-        |(k, frames)| ui_key(k,
-                             move |_| Command::Step(frames),
-                             false, tx.clone())
-    ));
-    keys
-}
-
-fn ui_key<'a>(key: Key, action: impl Fn(bool) -> Command + 'a, state: bool, tx: Sender<Command>) -> Box<WindowKey + 'a> {
-    box_key(ActiveKey::new(FlipFlopKey::new(DirectKey::from(key), state),
-                           move |state| tx.send(action(state)).unwrap(),
-    ))
-}
-
-fn si_keys(io: Rc<IO>) -> Vec<Box<dyn WindowKey>> {
-    [
-        (Key::Key5, io::Ev::Coin),
-        (Key::Key1, io::Ev::P1Start),
-        (Key::Left, io::Ev::P1Left),
-        (Key::Right, io::Ev::P1Right),
-        (Key::Space, io::Ev::P1Shoot),
-    ].into_iter().cloned()
-        .map(|(k, ev)| game_key(k, io.clone(), ev))
-        .collect()
-}
-
-fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: io::Ev) -> Box<WindowKey + 'a> {
-    box_key(DKey::new(key.into(), move |state| io.ui_event(ev, state)))
-}
-
-fn box_key<'a, K: WindowKey + 'a>(k: K) -> Box<WindowKey + 'a> {
-    Box::new(k)
-}
+//fn keys_apply(window: &mut Window, keys: &mut Vec<Box<WindowKey>>) {
+//    keys.iter_mut().for_each(|b| { b.update(&window); });
+//}
+//
+//fn keys(io: Rc<IO>, tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<WindowKey>> {
+//    let mut buttons = si_keys(io);
+//    buttons.extend(ui_keys(tx, fast, should_print_frame, should_print_late_stat).into_iter());
+//    buttons
+//}
+//
+//fn ui_keys(tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
+//    let pause = ui_key(Key::P,
+//                       |s| if s { Command::Pause } else { Command::Continue },
+//                       false, tx.clone());
+//    let print_frame = ui_key(Key::F,
+//                             |s| Command::PrintFrames(s),
+//                             should_print_frame, tx.clone());
+//    let print_stat = ui_key(Key::G,
+//                            |s| Command::PrintStat(s),
+//                            should_print_late_stat, tx.clone());
+//    let dump_state = ui_key(Key::D,
+//                            |_| Command::Dump,
+//                            false, tx.clone());
+//    let fast = ui_key(Key::NumPadPlus,
+//                      |s| Command::Fast(s),
+//                      fast, tx.clone());
+//    let mut keys = vec![pause, print_frame, print_stat, dump_state, fast];
+//    let steps_key: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)];
+//    keys.extend(steps_key.into_iter().map(
+//        |(k, frames)| ui_key(k,
+//                             move |_| Command::Step(frames),
+//                             false, tx.clone())
+//    ));
+//    keys
+//}
+//
+//fn ui_key<'a>(key: Key, action: impl Fn(bool) -> Command + 'a, state: bool, tx: Sender<Command>) -> Box<WindowKey + 'a> {
+//    box_key(ActiveKey::new(FlipFlopKey::new(DirectKey::from(key), state),
+//                           move |state| tx.send(action(state)).unwrap(),
+//    ))
+//}
+//
+//fn si_keys(io: Rc<IO>) -> Vec<Box<dyn WindowKey>> {
+//    [
+//        (Key::Key5, io::Ev::Coin),
+//        (Key::Key1, io::Ev::P1Start),
+//        (Key::Left, io::Ev::P1Left),
+//        (Key::Right, io::Ev::P1Right),
+//        (Key::Space, io::Ev::P1Shoot),
+//    ].into_iter().cloned()
+//        .map(|(k, ev)| game_key(k, io.clone(), ev))
+//        .collect()
+//}
+//
+//fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: io::Ev) -> Box<WindowKey + 'a> {
+//    box_key(DKey::new(key.into(), move |state| io.ui_event(ev, state)))
+//}
+//
+//fn box_key<'a, K: WindowKey + 'a>(k: K) -> Box<WindowKey + 'a> {
+//    Box::new(k)
+//}
 
 fn critical(cpu: &Cpu, e: CpuError) -> ! {
     dump(cpu);

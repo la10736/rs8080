@@ -7,8 +7,12 @@ authors = ["michele <michele.damico@gmail.com>"]
 rs8080 = { path="../" }
 log="*"
 simple_logger = "*"
-minifb = "*"
 structopt="*"
+gl = "0.10.0"
+
+[dependencies.sdl2]
+version = "*"
+features = ["static-link","bundled"]
 
 [dev-dependencies]
 rstest = "0.3"
