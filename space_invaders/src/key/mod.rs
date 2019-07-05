@@ -1,5 +1,5 @@
-use minifb::Window;
-use minifb::Key;
+use sdl2::keyboard::Keycode;
+use sdl2::event::Event;
 
 #[derive(Default)]
 struct FlipFlop {
@@ -37,18 +37,18 @@ impl Into<bool> for KeyState {
 }
 
 pub trait WindowKey {
-    fn update(&mut self, window: &Window) -> bool;
+    fn update(&mut self, event: &Event) -> Option<()>;
     fn active(&self) -> bool;
     fn change_state(&mut self, val: bool) -> bool;
 }
 
 pub struct DirectKey {
-    key: Key,
+    key: Keycode,
     last: KeyState,
 }
 
-impl From<Key> for DirectKey {
-    fn from(key: Key) -> Self {
+impl From<Keycode> for DirectKey {
+    fn from(key: Keycode) -> Self {
         DirectKey {
             key,
             last: KeyState::Released,
@@ -56,11 +56,23 @@ impl From<Key> for DirectKey {
     }
 }
 
+fn get_state(event: &Event, key: Keycode) -> Option<KeyState> {
+    match event {
+        Event::KeyDown { keycode: Some(code), .. } if code == &key => Some(KeyState::Pressed),
+        Event::KeyUp { keycode: Some(code), .. } if code == &key => Some(KeyState::Released),
+        _ => None
+    }
+}
+
 impl WindowKey for DirectKey {
-    fn update(&mut self, window: &Window) -> bool {
+    fn update(&mut self, event: &Event) -> Option<()> {
+        let new_state = get_state(event, self.key)?;
         let prev = self.last;
-        self.last = window.is_key_down(self.key).into();
-        prev != self.last
+        self.last = new_state;
+        match prev != self.last {
+            true => Some(()),
+            false => None
+        }
     }
 
     fn active(&self) -> bool {
@@ -95,15 +107,10 @@ impl<K: WindowKey> From<K> for FlipFlopKey<K> {
 }
 
 impl<K: WindowKey> WindowKey for FlipFlopKey<K> {
-    fn update(&mut self, window: &Window) -> bool {
-        let changed = self.key.update(window);
-
-        if changed && !self.key.active() {
-            self.flip_flop.change();
-            true
-        } else {
-            false
-        }
+    fn update(&mut self, window: &Event) -> Option<()> {
+        self.key.update(window)
+            .filter(|_| !self.key.active())
+            .map(|_| self.flip_flop.change())
     }
 
     fn active(&self) -> bool {
@@ -134,12 +141,10 @@ impl<K: WindowKey, A: Fn(bool)> ActiveKey<K, A> {
 pub type DKey<F> = ActiveKey<DirectKey, F>;
 
 impl<K: WindowKey, F: Fn(bool)> WindowKey for ActiveKey<K, F> {
-    fn update(&mut self, window: &Window) -> bool {
-        let changed = self.key.update(window);
-        if changed {
-            self.call_action();
-        }
-        changed
+    fn update(&mut self, window: &Event) -> Option<()> {
+        self.key
+            .update(window)
+            .map(|_| self.call_action())
     }
 
     fn active(&self) -> bool {

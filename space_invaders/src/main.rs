@@ -27,6 +27,7 @@ use rs8080::{
     hook::NoneHook
 };
 
+mod key;
 mod glutils;
 
 mod si;
@@ -97,6 +98,7 @@ pub struct VideoConfig {
 }
 
 enum Command {
+    Quit,
     Dump,
     Pause,
     Continue,
@@ -134,6 +136,9 @@ use sdl2::video::{GLContext, GLProfile, Window};
 use sdl2::VideoSubsystem;
 use std::time::{Duration, Instant};
 use glutils::{SurfaceRenderer, GfxBuffer};
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use key::{ActiveKey, FlipFlopKey, DirectKey, WindowKey, DKey};
 
 struct Video {
     video: VideoSubsystem,
@@ -247,17 +252,6 @@ fn main() {
     ).expect("Cannot create output window");
     out.enable_video().expect("Cannot enable video");
 
-//    let mut window = Window::new("Space Invaders - ESC to exit",
-//                                 w,
-//                                 h,
-//                                 WindowOptions {
-//                                     borderless: true,
-//                                     title: false,
-//                                     resize: false,
-//                                     scale: Scale::FitScreen,
-//                                 }).unwrap_or_else(|e| {
-//        panic!("{}", e);
-//    });
     let mut fb = vec![0; w * h];
 
     let mut start = time::Instant::now();
@@ -265,6 +259,7 @@ fn main() {
     let mut last_frame_start = frames;
     let mut clocks: u64 = 0;
     let (tx, rx) = std::sync::mpsc::channel();
+    let mut event_pump = out.context.event_pump().unwrap();
 
     let mut pause_in_frames = opt.pause_in_frames;
     let mut late = time::Duration::default();
@@ -272,16 +267,14 @@ fn main() {
     let mut should_dump_stat = opt.dump_stats;
     let mut fast = opt.fast;
 
-//    let mut keys = keys(io, tx, fast, should_print_frame, should_dump_stat);
+    let mut keys = keys(io, tx, fast, should_print_frame, should_dump_stat);
 
     loop {
-//        if !window.is_open() || window.is_key_down(Key::Escape) {
-//            debug!("Should terminate");
-//            break;
-//        }
+        event_pump.poll_iter().for_each(|e| keys_apply(&e, &mut keys));
 
         if let Ok(cmd) = rx.try_recv() {
             match cmd {
+                Command::Quit => break,
                 Command::Dump => dump(&cpu),
                 Command::Pause => { pause_in_frames = Some(0) }
                 Command::Continue => {
@@ -299,8 +292,6 @@ fn main() {
                 }
             }
         }
-
-//        keys_apply(&mut window, &mut keys);
 
         if pause_in_frames != Some(0) {
             clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
@@ -371,67 +362,71 @@ fn cpu_run_till(cpu: &mut Cpu, mut clocks: u64, expected_clocks: u64) -> Result<
     Ok(clocks)
 }
 
-//fn keys_apply(window: &mut Window, keys: &mut Vec<Box<WindowKey>>) {
-//    keys.iter_mut().for_each(|b| { b.update(&window); });
-//}
-//
-//fn keys(io: Rc<IO>, tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<WindowKey>> {
-//    let mut buttons = si_keys(io);
-//    buttons.extend(ui_keys(tx, fast, should_print_frame, should_print_late_stat).into_iter());
-//    buttons
-//}
-//
-//fn ui_keys(tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
-//    let pause = ui_key(Key::P,
-//                       |s| if s { Command::Pause } else { Command::Continue },
-//                       false, tx.clone());
-//    let print_frame = ui_key(Key::F,
-//                             |s| Command::PrintFrames(s),
-//                             should_print_frame, tx.clone());
-//    let print_stat = ui_key(Key::G,
-//                            |s| Command::PrintStat(s),
-//                            should_print_late_stat, tx.clone());
-//    let dump_state = ui_key(Key::D,
-//                            |_| Command::Dump,
-//                            false, tx.clone());
-//    let fast = ui_key(Key::NumPadPlus,
-//                      |s| Command::Fast(s),
-//                      fast, tx.clone());
-//    let mut keys = vec![pause, print_frame, print_stat, dump_state, fast];
-//    let steps_key: Vec<_> = vec![(Key::S, 1), (Key::Q, 5), (Key::W, 10), (Key::E, 20), (Key::R, 60), (Key::T, 600)];
-//    keys.extend(steps_key.into_iter().map(
-//        |(k, frames)| ui_key(k,
-//                             move |_| Command::Step(frames),
-//                             false, tx.clone())
-//    ));
-//    keys
-//}
-//
-//fn ui_key<'a>(key: Key, action: impl Fn(bool) -> Command + 'a, state: bool, tx: Sender<Command>) -> Box<WindowKey + 'a> {
-//    box_key(ActiveKey::new(FlipFlopKey::new(DirectKey::from(key), state),
-//                           move |state| tx.send(action(state)).unwrap(),
-//    ))
-//}
-//
-//fn si_keys(io: Rc<IO>) -> Vec<Box<dyn WindowKey>> {
-//    [
-//        (Key::Key5, io::Ev::Coin),
-//        (Key::Key1, io::Ev::P1Start),
-//        (Key::Left, io::Ev::P1Left),
-//        (Key::Right, io::Ev::P1Right),
-//        (Key::Space, io::Ev::P1Shoot),
-//    ].into_iter().cloned()
-//        .map(|(k, ev)| game_key(k, io.clone(), ev))
-//        .collect()
-//}
-//
-//fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Key, io: I, ev: io::Ev) -> Box<WindowKey + 'a> {
-//    box_key(DKey::new(key.into(), move |state| io.ui_event(ev, state)))
-//}
-//
-//fn box_key<'a, K: WindowKey + 'a>(k: K) -> Box<WindowKey + 'a> {
-//    Box::new(k)
-//}
+fn keys_apply(event: &Event, keys: &mut Vec<Box<dyn WindowKey>>) {
+    keys.iter_mut().for_each(|b| {
+        b.update(event);
+    });
+}
+
+fn keys(io: Rc<IO>, tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
+    let mut buttons = si_keys(io);
+    buttons.extend(ui_keys(tx, fast, should_print_frame, should_print_late_stat).into_iter());
+    buttons
+}
+
+fn ui_keys(tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
+    let quit = ui_key(Keycode::Escape,
+                      |s| Command::Quit, false, tx.clone());
+    let pause = ui_key(Keycode::P,
+                       |s| if s { Command::Pause } else { Command::Continue },
+                       false, tx.clone());
+    let print_frame = ui_key(Keycode::F,
+                             |s| Command::PrintFrames(s),
+                             should_print_frame, tx.clone());
+    let print_stat = ui_key(Keycode::G,
+                            |s| Command::PrintStat(s),
+                            should_print_late_stat, tx.clone());
+    let dump_state = ui_key(Keycode::D,
+                            |_| Command::Dump,
+                            false, tx.clone());
+    let fast = ui_key(Keycode::KpPlus,
+                      |s| Command::Fast(s),
+                      fast, tx.clone());
+    let mut keys = vec![quit, pause, print_frame, print_stat, dump_state, fast];
+    let steps_key: Vec<_> = vec![(Keycode::S, 1), (Keycode::Q, 5), (Keycode::W, 10), (Keycode::E, 20), (Keycode::R, 60), (Keycode::T, 600)];
+    keys.extend(steps_key.into_iter().map(
+        |(k, frames)| ui_key(k,
+                             move |_| Command::Step(frames),
+                             false, tx.clone())
+    ));
+    keys
+}
+
+fn ui_key<'a>(key: Keycode, action: impl Fn(bool) -> Command + 'a, state: bool, tx: Sender<Command>) -> Box<dyn WindowKey + 'a> {
+    box_key(ActiveKey::new(FlipFlopKey::new(DirectKey::from(key), state),
+                           move |state| tx.send(action(state)).unwrap(),
+    ))
+}
+
+fn si_keys(io: Rc<IO>) -> Vec<Box<dyn WindowKey>> {
+    [
+        (Keycode::Kp5, io::Ev::Coin),
+        (Keycode::Kp1, io::Ev::P1Start),
+        (Keycode::Left, io::Ev::P1Left),
+        (Keycode::Right, io::Ev::P1Right),
+        (Keycode::Space, io::Ev::P1Shoot),
+    ].into_iter().cloned()
+        .map(|(k, ev)| game_key(k, io.clone(), ev))
+        .collect()
+}
+
+fn game_key<'a, I: Deref<Target=IO> + 'a>(key: Keycode, io: I, ev: io::Ev) -> Box<dyn WindowKey + 'a> {
+    box_key(DKey::new(key.into(), move |state| io.ui_event(ev, state)))
+}
+
+fn box_key<'a, K: WindowKey + 'a>(k: K) -> Box<dyn WindowKey + 'a> {
+    Box::new(k)
+}
 
 fn critical(cpu: &Cpu, e: CpuError) -> ! {
     dump(cpu);
