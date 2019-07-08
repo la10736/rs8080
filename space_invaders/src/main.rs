@@ -135,7 +135,7 @@ impl Output {
 use sdl2::video::{GLContext, GLProfile, Window};
 use sdl2::VideoSubsystem;
 use std::time::{Duration, Instant};
-use glutils::{SurfaceRenderer, GfxBuffer};
+use glutils::{SurfaceRenderer, GfxBuffer, OwnedGfxBuffer, Color};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use key::{ActiveKey, FlipFlopKey, DirectKey, WindowKey, DKey};
@@ -251,6 +251,7 @@ fn main() {
         },
     ).expect("Cannot create output window");
     out.enable_video().expect("Cannot enable video");
+    let mut screen = OwnedGfxBuffer::new(w, h);
 
     let mut fb = vec![0; w * h];
 
@@ -297,7 +298,18 @@ fn main() {
             clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
                 .unwrap_or_else(|e| critical(&cpu, e));
 
-//            window.update_with_buffer(&fb).unwrap();
+            let v = out.video.as_mut().unwrap();
+
+            let mut out_buf = screen.buf_mut();
+            for r in 0..h {
+                let mut row = out_buf.line(r);
+                for c in 0..w {
+                    row.set(c, fb[(r * w) + c].into())
+                }
+            }
+
+            v.render_frame(&screen.buf());
+            v.window.gl_swap_window();
 
             if should_print_frame {
                 info!("Frame nr: {}", frames);
@@ -322,7 +334,6 @@ fn main() {
             }
         } else {
             std::thread::sleep(time::Duration::from_millis(100));
-//            window.update();
         }
     }
     if should_dump_stat {
