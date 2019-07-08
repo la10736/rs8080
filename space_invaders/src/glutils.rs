@@ -30,6 +30,12 @@ pub struct GfxBufferMut<'a> {
     pitch: usize,
 }
 
+pub struct OwnedGfxBuffer {
+    mem: Vec<u8>,
+    width: usize,
+    height: usize,
+}
+
 pub struct GfxLine<'a> {
     mem: &'a [u8],
 }
@@ -38,8 +44,36 @@ pub struct GfxLineMut<'a> {
     mem: &'a mut [u8],
 }
 
-const BPP: usize = 48;
-const BYPP: usize = BPP / 3;
+#[derive(Default, Debug, Copy, Clone)]
+pub struct Color(pub u8, pub u8, pub u8, pub u8);
+
+impl From<u32> for Color {
+    fn from(v: u32) -> Self {
+        Color((v >> 24) as u8, ((v >> 16) & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8)
+    }
+}
+
+impl<'a> GfxLine<'a> {
+    pub fn get(&self, col: usize) -> Color {
+        Color(self.mem[col * BYPP], self.mem[col * BYPP + 1], self.mem[col * BYPP + 2], self.mem[col * BYPP + 3])
+    }
+}
+
+impl<'a> GfxLineMut<'a> {
+    pub fn get(&self, col: usize) -> Color {
+        Color(0x80, 0xA0, 0x00, 0x80)
+    }
+
+    pub fn set(&mut self, col: usize, color: Color) {
+        self.mem[col * BYPP] = color.0;
+        self.mem[col * BYPP + 1] = color.1;
+        self.mem[col * BYPP + 2] = color.2;
+        self.mem[col * BYPP + 3] = color.3;
+    }
+}
+
+const BPP: usize = 32;
+const BYPP: usize = BPP / 8;
 
 impl<'a: 's, 's> GfxBuffer<'a> {
     pub fn new(
@@ -158,6 +192,57 @@ impl<'a: 's, 's> GfxBufferMut<'a> {
     }
 }
 
+impl OwnedGfxBuffer {
+    pub fn from_buf(buf: &GfxBuffer) -> OwnedGfxBuffer {
+        let (w, h) = (buf.width, buf.height);
+        let mut dst = OwnedGfxBuffer::new(w, h);
+        for y in 0..h {
+            let src = buf.line(y);
+            let mut dstbuf = dst.buf_mut();
+            let mut dst = dstbuf.line(y);
+            for x in 0..w {
+                dst.set(x, src.get(x));
+            }
+        }
+        dst
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    pub fn height(&self) -> usize {
+        self.height
+    }
+
+    pub fn new(width: usize, height: usize) -> OwnedGfxBuffer {
+        let mut v = Vec::new();
+        v.resize(width * height * BYPP, 0);
+        OwnedGfxBuffer {
+            mem: v,
+            width,
+            height,
+        }
+    }
+
+    pub fn buf(&self) -> GfxBuffer {
+        GfxBuffer::new(
+            &self.mem,
+            self.width,
+            self.height,
+            self.width * BYPP,
+        ).unwrap()
+    }
+
+    pub fn buf_mut(&mut self) -> GfxBufferMut {
+        GfxBufferMut::new(
+            &mut self.mem,
+            self.width,
+            self.height,
+            self.width * BYPP,
+        ).unwrap()
+    }
+}
 
 impl Texture {
     pub fn new() -> Self {
