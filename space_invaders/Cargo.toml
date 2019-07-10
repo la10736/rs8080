@@ -9,6 +9,8 @@ log="*"
 simple_logger = "*"
 structopt="*"
 gl = "0.10.0"
+# I should fix it
+cfg-if = "0.1.9"
 
 [dependencies.sdl2]
 version = "*"

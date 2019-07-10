@@ -2,6 +2,7 @@ extern crate gl;
 
 use self::gl::types::*;
 use std::ffi;
+use std::ffi::{CString, CStr};
 
 fn return_param<T, F>(f: F) -> T
     where
@@ -45,34 +46,33 @@ pub struct GfxLineMut<'a> {
 }
 
 #[derive(Default, Debug, Copy, Clone)]
-pub struct Color(pub u8, pub u8, pub u8, pub u8);
+pub struct Color(pub u8, pub u8, pub u8);
 
 impl From<u32> for Color {
     fn from(v: u32) -> Self {
-        Color((v >> 24) as u8, ((v >> 16) & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8)
+        Color(((v >> 16) & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8)
     }
 }
 
 impl<'a> GfxLine<'a> {
     pub fn get(&self, col: usize) -> Color {
-        Color(self.mem[col * BYPP], self.mem[col * BYPP + 1], self.mem[col * BYPP + 2], self.mem[col * BYPP + 3])
+        Color(self.mem[col * BYPP], self.mem[col * BYPP], self.mem[col * BYPP])
     }
 }
 
 impl<'a> GfxLineMut<'a> {
     pub fn get(&self, col: usize) -> Color {
-        Color(0x80, 0xA0, 0x00, 0x80)
+        Color(self.mem[col * BYPP], self.mem[col * BYPP], self.mem[col * BYPP])
     }
 
     pub fn set(&mut self, col: usize, color: Color) {
         self.mem[col * BYPP] = color.0;
         self.mem[col * BYPP + 1] = color.1;
         self.mem[col * BYPP + 2] = color.2;
-        self.mem[col * BYPP + 3] = color.3;
     }
 }
 
-const BPP: usize = 32;
+const BPP: usize = 24;
 const BYPP: usize = BPP / 8;
 
 impl<'a: 's, 's> GfxBuffer<'a> {
@@ -87,7 +87,7 @@ impl<'a: 's, 's> GfxBuffer<'a> {
                 "pitch ({}) too small for buffer (width: {}, bpp: {})",
                 pitch,
                 width,
-                BYPP * 3,
+                BYPP * 8,
             ));
         }
         if mem.len() < height * pitch {
@@ -368,6 +368,59 @@ pub struct SurfaceRenderer {
     _tex_data: Vec<GLfloat>,
 }
 
+fn create_whitespace_cstring_with_len(len: usize) -> CString {
+    // allocate buffer of correct size
+    let mut buffer: Vec<u8> = Vec::with_capacity(len + 1);
+    // fill it with len spaces
+    buffer.extend([b' '].iter().cycle().take(len));
+    // convert buffer to CString
+    unsafe { CString::from_vec_unchecked(buffer) }
+}
+
+struct Shader {
+    id: gl::types::GLuint,
+}
+
+impl Drop for Shader {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteShader(self.id);
+        }
+    }
+}
+
+fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<Shader, String> {
+    unsafe {
+        let id = gl::CreateShader(kind);
+        gl::ShaderSource(
+            id,
+            1,
+            &(source.as_ptr() as *const GLchar),
+            std::ptr::null(),
+        );
+        gl::CompileShader(id);
+        let mut success: gl::types::GLint = 1;
+        gl::GetShaderiv(id, gl::COMPILE_STATUS, &mut success);
+        match success {
+            0 => {
+                let mut len: gl::types::GLint = 0;
+                unsafe {
+                    gl::GetShaderiv(id, gl::INFO_LOG_LENGTH, &mut len);
+                }
+                let error = create_whitespace_cstring_with_len(len as usize);
+                gl::GetShaderInfoLog(
+                    id,
+                    len,
+                    std::ptr::null_mut(),
+                    error.as_ptr() as *mut gl::types::GLchar
+                );
+                Err(error.to_string_lossy().into())
+            },
+            _ => Ok(Shader { id })
+        }
+    }
+}
+
 impl SurfaceRenderer {
     pub fn new<F>(load_fn: F) -> Self
         where
@@ -376,7 +429,7 @@ impl SurfaceRenderer {
         unsafe {
             gl::load_with(load_fn);
             let vert_source = b"
-                #version 150
+                #version 320 es
                 in vec2 a_position;
                 in vec2 a_texcoord;
                 out vec2 v_texcoord;
@@ -387,7 +440,8 @@ impl SurfaceRenderer {
             \0";
 
             let frag_source = b"
-                #version 150
+                #version 320 es
+                precision highp float;
                 uniform sampler2D u_texture;
                 in vec2 v_texcoord;
                 out vec4 v_fragcolor;
@@ -397,27 +451,16 @@ impl SurfaceRenderer {
             \0";
 
             let program = Program::new();
-            let vert_shader = gl::CreateShader(gl::VERTEX_SHADER);
-            let frag_shader = gl::CreateShader(gl::FRAGMENT_SHADER);
-            gl::ShaderSource(
-                vert_shader,
-                1,
-                &(vert_source.as_ptr() as *const GLchar),
-                &(vert_source.len() as GLint),
-            );
-            gl::ShaderSource(
-                frag_shader,
-                1,
-                &(frag_source.as_ptr() as *const GLchar),
-                &(frag_source.len() as GLint),
-            );
-            gl::CompileShader(vert_shader);
-            gl::CompileShader(frag_shader);
-            gl::AttachShader(program.id, vert_shader);
-            gl::AttachShader(program.id, frag_shader);
+            let vert_shader = shader_from_source(
+                CStr::from_bytes_with_nul(vert_source).unwrap(),
+                gl::VERTEX_SHADER).unwrap();
+            let frag_shader = shader_from_source(
+                CStr::from_bytes_with_nul(frag_source).unwrap(),
+                gl::FRAGMENT_SHADER).unwrap();
+
+            gl::AttachShader(program.id, vert_shader.id);
+            gl::AttachShader(program.id, frag_shader.id);
             gl::LinkProgram(program.id);
-            gl::DeleteShader(vert_shader);
-            gl::DeleteShader(frag_shader);
 
             let loc_u_texture =
                 gl::GetUniformLocation(program.id, b"u_texture\0".as_ptr() as _) as u32;
@@ -477,12 +520,12 @@ impl SurfaceRenderer {
 
             let surf = Self {
                 tex: Texture::new(),
-                vao: vao,
+                vao,
                 _vbo_pos: vbo_pos,
                 _vbo_tex: vbo_tex,
                 _pos_data: pos_data,
                 _tex_data: tex_data,
-                program: program,
+                program,
             };
 
             surf

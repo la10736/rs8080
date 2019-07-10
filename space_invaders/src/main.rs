@@ -268,10 +268,20 @@ fn main() {
     let mut should_dump_stat = opt.dump_stats;
     let mut fast = opt.fast;
 
-    let mut keys = keys(io, tx, fast, should_print_frame, should_dump_stat);
+    let mut keys = keys(io, tx.clone(), fast, should_print_frame, should_dump_stat);
 
     loop {
-        event_pump.poll_iter().for_each(|e| keys_apply(&e, &mut keys));
+        event_pump.poll_iter()
+            .filter_map(
+                |e| match e {
+                    Event::Quit{..} => {
+                        tx.send(Command::Quit);
+                        None
+                    },
+                    _ => Some(e)
+                }
+            )
+            .for_each(|e| keys_apply(&e, &mut keys));
 
         if let Ok(cmd) = rx.try_recv() {
             match cmd {
@@ -421,8 +431,8 @@ fn ui_key<'a>(key: Keycode, action: impl Fn(bool) -> Command + 'a, state: bool, 
 
 fn si_keys(io: Rc<IO>) -> Vec<Box<dyn WindowKey>> {
     [
-        (Keycode::Kp5, io::Ev::Coin),
-        (Keycode::Kp1, io::Ev::P1Start),
+        (Keycode::Num5, io::Ev::Coin),
+        (Keycode::Num1, io::Ev::P1Start),
         (Keycode::Left, io::Ev::P1Left),
         (Keycode::Right, io::Ev::P1Right),
         (Keycode::Space, io::Ev::P1Shoot),
