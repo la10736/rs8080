@@ -13,7 +13,7 @@ gl = "0.10.0"
 cfg-if = "0.1.9"
 
 [dependencies.sdl2]
-version = "*"
+version = "0.32"
 features = ["static-link","bundled"]
 
 [dev-dependencies]

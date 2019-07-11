@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 extern crate gl;
 
 use self::gl::types::*;
@@ -49,12 +50,14 @@ pub struct GfxLineMut<'a> {
 pub struct Color(pub u8, pub u8, pub u8);
 
 impl From<u32> for Color {
+    #[inline(always)]
     fn from(v: u32) -> Self {
         Color(((v >> 16) & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8)
     }
 }
 
 impl<'a> GfxLine<'a> {
+    #[inline(always)]
     pub fn get(&self, col: usize) -> Color {
         Color(self.mem[col * BYPP], self.mem[col * BYPP], self.mem[col * BYPP])
     }
@@ -65,6 +68,7 @@ impl<'a> GfxLineMut<'a> {
         Color(self.mem[col * BYPP], self.mem[col * BYPP], self.mem[col * BYPP])
     }
 
+    #[inline(always)]
     pub fn set(&mut self, col: usize, color: Color) {
         self.mem[col * BYPP] = color.0;
         self.mem[col * BYPP + 1] = color.1;
@@ -404,9 +408,7 @@ fn shader_from_source(source: &CStr, kind: gl::types::GLenum) -> Result<Shader, 
         match success {
             0 => {
                 let mut len: gl::types::GLint = 0;
-                unsafe {
-                    gl::GetShaderiv(id, gl::INFO_LOG_LENGTH, &mut len);
-                }
+                gl::GetShaderiv(id, gl::INFO_LOG_LENGTH, &mut len);
                 let error = create_whitespace_cstring_with_len(len as usize);
                 gl::GetShaderInfoLog(
                     id,

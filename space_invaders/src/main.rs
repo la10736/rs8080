@@ -135,7 +135,7 @@ impl Output {
 use sdl2::video::{GLContext, GLProfile, Window};
 use sdl2::VideoSubsystem;
 use std::time::{Duration, Instant};
-use glutils::{SurfaceRenderer, GfxBuffer, OwnedGfxBuffer, Color};
+use glutils::{SurfaceRenderer, GfxBuffer, OwnedGfxBuffer};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use key::{ActiveKey, FlipFlopKey, DirectKey, WindowKey, DKey};
@@ -270,22 +270,19 @@ fn main() {
 
     let mut keys = keys(io, tx.clone(), fast, should_print_frame, should_dump_stat);
 
-    loop {
+    'main: loop {
         event_pump.poll_iter()
-            .filter_map(
+            .for_each(
                 |e| match e {
-                    Event::Quit{..} => {
-                        tx.send(Command::Quit);
-                        None
-                    },
-                    _ => Some(e)
-                }
-            )
-            .for_each(|e| keys_apply(&e, &mut keys));
+                    Event::Quit{..} => {tx.send(Command::Quit).unwrap();},
+                    _ => keys_apply(&e, &mut keys)
 
-        if let Ok(cmd) = rx.try_recv() {
+                }
+            );
+
+        while let Ok(cmd) = rx.try_recv() {
             match cmd {
-                Command::Quit => break,
+                Command::Quit => break 'main,
                 Command::Dump => dump(&cpu),
                 Command::Pause => { pause_in_frames = Some(0) }
                 Command::Continue => {
@@ -300,15 +297,17 @@ fn main() {
                     fast = v;
                     start = time::Instant::now();
                     last_frame_start = frames;
+                    info!("Fast = {}", v);
                 }
             }
         }
 
         if pause_in_frames != Some(0) {
+            let v = out.video.as_mut().unwrap();
+
             clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
                 .unwrap_or_else(|e| critical(&cpu, e));
 
-            let v = out.video.as_mut().unwrap();
 
             let mut out_buf = screen.buf_mut();
             for r in 0..h {
@@ -320,6 +319,8 @@ fn main() {
 
             v.render_frame(&screen.buf());
             v.window.gl_swap_window();
+
+            v.update_fps();
 
             if should_print_frame {
                 info!("Frame nr: {}", frames);
@@ -397,7 +398,7 @@ fn keys(io: Rc<IO>, tx: Sender<Command>, fast: bool, should_print_frame: bool, s
 
 fn ui_keys(tx: Sender<Command>, fast: bool, should_print_frame: bool, should_print_late_stat: bool) -> Vec<Box<dyn WindowKey>> {
     let quit = ui_key(Keycode::Escape,
-                      |s| Command::Quit, false, tx.clone());
+                      |_| Command::Quit, false, tx.clone());
     let pause = ui_key(Keycode::P,
                        |s| if s { Command::Pause } else { Command::Continue },
                        false, tx.clone());
@@ -410,7 +411,7 @@ fn ui_keys(tx: Sender<Command>, fast: bool, should_print_frame: bool, should_pri
     let dump_state = ui_key(Keycode::D,
                             |_| Command::Dump,
                             false, tx.clone());
-    let fast = ui_key(Keycode::KpPlus,
+    let fast = ui_key(Keycode::Plus,
                       |s| Command::Fast(s),
                       fast, tx.clone());
     let mut keys = vec![quit, pause, print_frame, print_stat, dump_state, fast];

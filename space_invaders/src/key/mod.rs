@@ -1,4 +1,4 @@
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::{Keycode, KeyboardState, Scancode};
 use sdl2::event::Event;
 
 #[derive(Default)]
@@ -50,23 +50,19 @@ pub struct DirectKey {
 impl From<Keycode> for DirectKey {
     fn from(key: Keycode) -> Self {
         DirectKey {
-            key,
+            key: key.into(),
             last: KeyState::Released,
         }
     }
 }
 
-fn get_state(event: &Event, key: Keycode) -> Option<KeyState> {
-    match event {
-        Event::KeyDown { keycode: Some(code), .. } if code == &key => Some(KeyState::Pressed),
-        Event::KeyUp { keycode: Some(code), .. } if code == &key => Some(KeyState::Released),
-        _ => None
-    }
-}
-
 impl WindowKey for DirectKey {
     fn update(&mut self, event: &Event) -> Option<()> {
-        let new_state = get_state(event, self.key)?;
+        let new_state = match event {
+            Event::KeyUp {keycode: Some(code), repeat: false, ..} if code == &self.key => Some(KeyState::Released) ,
+            Event::KeyDown {keycode: Some(code), repeat: false, ..} if code == &self.key => Some(KeyState::Pressed) ,
+            _ => None
+        }?;
         let prev = self.last;
         self.last = new_state;
         match prev != self.last {
@@ -107,8 +103,8 @@ impl<K: WindowKey> From<K> for FlipFlopKey<K> {
 }
 
 impl<K: WindowKey> WindowKey for FlipFlopKey<K> {
-    fn update(&mut self, window: &Event) -> Option<()> {
-        self.key.update(window)
+    fn update(&mut self, event: &Event) -> Option<()> {
+        self.key.update(event)
             .filter(|_| !self.key.active())
             .map(|_| self.flip_flop.change())
     }
@@ -141,9 +137,9 @@ impl<K: WindowKey, A: Fn(bool)> ActiveKey<K, A> {
 pub type DKey<F> = ActiveKey<DirectKey, F>;
 
 impl<K: WindowKey, F: Fn(bool)> WindowKey for ActiveKey<K, F> {
-    fn update(&mut self, window: &Event) -> Option<()> {
+    fn update(&mut self, event: &Event) -> Option<()> {
         self.key
-            .update(window)
+            .update(event)
             .map(|_| self.call_action())
     }
 

@@ -39,7 +39,7 @@ const LIVES_MASK: u8 = 0x03;
 const BONUS_LIFE_MASK: u8 = 0x08;
 const COIN_INFO_MASK: u8 = 0x80;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Ev {
     Coin,
     Tilt,
@@ -69,6 +69,7 @@ impl IO {
     }
 
     pub fn ui_event(&self, ev: Ev, pressed: bool) {
+        debug!("Received {:?} {}", ev, pressed);
         let (port, bit, set) = match ev {
             Ev::Coin => (&self.port1, COIN_BIT, !pressed),
             Ev::Tilt => (&self.port2, TILT_BIT, pressed),
