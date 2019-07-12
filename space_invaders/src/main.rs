@@ -135,7 +135,7 @@ impl Output {
 use sdl2::video::{GLContext, GLProfile, Window};
 use sdl2::VideoSubsystem;
 use std::time::{Duration, Instant};
-use glutils::{SurfaceRenderer, GfxBuffer, OwnedGfxBuffer};
+use glutils::{SurfaceRenderer, GfxBuffer, OwnedGfxBuffer, GfxBufferMut};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use key::{ActiveKey, FlipFlopKey, DirectKey, WindowKey, DKey};
@@ -305,17 +305,9 @@ fn main() {
         if pause_in_frames != Some(0) {
             let v = out.video.as_mut().unwrap();
 
-            clocks = next_frame(&mut cpu, &gpu, w, h, &mut fb, frames, clocks)
+            let out_buf = screen.buf_mut();
+            clocks = next_frame(&mut cpu, &gpu, w, h, out_buf, frames, clocks)
                 .unwrap_or_else(|e| critical(&cpu, e));
-
-
-            let mut out_buf = screen.buf_mut();
-            for r in 0..h {
-                let mut row = out_buf.line(r);
-                for c in 0..w {
-                    row.set(c, fb[(r * w) + c].into())
-                }
-            }
 
             v.render_frame(&screen.buf());
             v.window.gl_swap_window();
@@ -354,7 +346,7 @@ fn main() {
     info!("Game Done");
 }
 
-fn next_frame(cpu: &mut Cpu, gpu: &Gpu, w: usize, h: usize, fb: &mut Vec<u32>,
+fn next_frame(cpu: &mut Cpu, gpu: &Gpu, w: usize, h: usize, mut fb: GfxBufferMut,
               frames: u64, mut clocks: u64) -> Result<u64, CpuError> {
     let expected_clocks = frames * CLOCKS_PER_FRAME;
     let canvas = Canvas {
@@ -367,12 +359,12 @@ fn next_frame(cpu: &mut Cpu, gpu: &Gpu, w: usize, h: usize, fb: &mut Vec<u32>,
 
     // Up Frame
     clocks = cpu_run_till(cpu, clocks, expected_clocks)?;
-    gpu.fill_canvas(fb.as_mut(), &canvas, Some(left));
+    gpu.fill_canvas(&mut fb, &canvas, Some(left));
     cpu.irq(IrqCmd::Irq1)?;
 
     // Down Frame
     clocks = cpu_run_till(cpu, clocks, expected_clocks + CLOCKS_PER_HALF_FRAME)?;
-    gpu.fill_canvas(fb.as_mut(), &canvas, Some(right));
+    gpu.fill_canvas(&mut fb, &canvas, Some(right));
     cpu.irq(IrqCmd::Irq2)?;
     Ok(clocks)
 }

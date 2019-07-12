@@ -1,4 +1,5 @@
 use graphics::{Canvas, Rect, Pixel, Point};
+use glutils::GfxBufferMut;
 
 pub struct Gpu {
     ptr: *const u8,
@@ -11,10 +12,11 @@ impl Gpu {
         Gpu { ptr, width, height }
     }
 
-    pub fn fill_canvas(&self, buffer: &mut [u32], canvas: &Canvas, rect: Option<Rect>) {
+    pub fn fill_canvas(&self, buffer: &mut GfxBufferMut, canvas: &Canvas, rect: Option<Rect>) {
         let rect = rect.unwrap_or(canvas.into());
         let inner = canvas.centered_rect(self.height, self.width);
         for r in rect.y..(rect.y + rect.height) {
+            let mut row = buffer.line(r);
             for c in rect.x..(rect.x + rect.width) {
                 let point = (c, r).into();
                 let color = if !inner.contain(point) {
@@ -28,7 +30,7 @@ impl Gpu {
                         canvas.bg
                     }
                 };
-                buffer[r * canvas.width + c] = Pixel::from(color).into();
+                row.set(c, color.into());
             }
         }
     }

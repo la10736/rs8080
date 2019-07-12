@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 extern crate gl;
 
-use self::gl::types::*;
 use std::ffi;
-use std::ffi::{CString, CStr};
+use std::ffi::{CStr, CString};
+
+use self::gl::types::*;
 
 fn return_param<T, F>(f: F) -> T
     where
@@ -47,32 +48,42 @@ pub struct GfxLineMut<'a> {
 }
 
 #[derive(Default, Debug, Copy, Clone)]
-pub struct Color(pub u8, pub u8, pub u8);
+pub struct Color {
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+}
+
+impl Color {
+    pub fn new(red: u8, green: u8, blue: u8) -> Self {
+        Color { red, green, blue }
+    }
+}
 
 impl From<u32> for Color {
     #[inline(always)]
     fn from(v: u32) -> Self {
-        Color(((v >> 16) & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8)
+        Color::new(((v >> 16) & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8)
     }
 }
 
 impl<'a> GfxLine<'a> {
     #[inline(always)]
     pub fn get(&self, col: usize) -> Color {
-        Color(self.mem[col * BYPP], self.mem[col * BYPP], self.mem[col * BYPP])
+        Color::new(self.mem[col * BYPP], self.mem[col * BYPP], self.mem[col * BYPP])
     }
 }
 
 impl<'a> GfxLineMut<'a> {
     pub fn get(&self, col: usize) -> Color {
-        Color(self.mem[col * BYPP], self.mem[col * BYPP], self.mem[col * BYPP])
+        Color::new(self.mem[col * BYPP], self.mem[col * BYPP], self.mem[col * BYPP])
     }
 
     #[inline(always)]
     pub fn set(&mut self, col: usize, color: Color) {
-        self.mem[col * BYPP] = color.0;
-        self.mem[col * BYPP + 1] = color.1;
-        self.mem[col * BYPP + 2] = color.2;
+        self.mem[col * BYPP] = color.red;
+        self.mem[col * BYPP + 1] = color.green;
+        self.mem[col * BYPP + 2] = color.blue;
     }
 }
 
