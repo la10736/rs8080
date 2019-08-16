@@ -14,4 +14,4 @@ members = ["space_invaders"]
 log = "*"
 
 [dev-dependencies]
-rstest = { "path" = "../rstest" }
+rstest = "0.3"
