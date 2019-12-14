@@ -27,9 +27,9 @@ impl From<u16> for ShiftRegister {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rstest::rstest_parametrize;
+    use rstest::rstest;
 
-    #[rstest_parametrize(
+    #[rstest(
     value, offset, expected,
     case(0b0110_0111_1010_1100, 0, 0b0110_0111),
     case(0b0110_0111_1010_1100, 1, 0b1100_1111),

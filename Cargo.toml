@@ -1,6 +1,6 @@
 [package]
 name = "rs8080"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["michele <michele.damico@gmail.com>"]
 
 [profile.release]
@@ -14,4 +14,4 @@ members = ["space_invaders"]
 log = "*"
 
 [dev-dependencies]
-rstest = "0.4"
+rstest = "0.5"

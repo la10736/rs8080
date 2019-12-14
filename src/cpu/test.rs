@@ -326,7 +326,7 @@ mod pair_register {
         assert_eq!(cpu.mmu.read_byte(sp - 2), Ok(0x43));
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     init, expected,
     case((), 0x02),
     case(Sign, 0x82),
@@ -344,36 +344,38 @@ mod pair_register {
     }
 
     #[rstest]
-    fn pop_should_recover_regs(mut cpu: Cpu) {
+    fn pop_should_recover_regs(mut cpu: Cpu) -> Result<()> {
         let sp = 0x321a;
-        cpu.mmu.write_byte(sp, 0x8f);
-        cpu.mmu.write_byte(sp + 1, 0x9d);
+        cpu.mmu.write_byte(sp, 0x8f)?;
+        cpu.mmu.write_byte(sp + 1, 0x9d)?;
         cpu.state.set_sp(sp);
 
-        cpu.exec(Pop(BytePair::DE)).unwrap();
+        cpu.exec(Pop(BytePair::DE))?;
 
         assert_eq!(cpu.state.d, 0x9d);
         assert_eq!(cpu.state.e, 0x8f);
+        Ok(())
     }
 
     #[rstest]
-    fn pop_should_move_stack_pointer(mut cpu: Cpu) {
+    fn pop_should_move_stack_pointer(mut cpu: Cpu) -> Result<()>{
         let sp = 0x1230;
         cpu.state.set_sp(sp);
 
-        cpu.exec(Pop(BytePair::BC)).unwrap();
+        cpu.exec(Pop(BytePair::BC))?;
 
         assert_eq!(cpu.state.sp, sp + 2);
+        Ok(())
     }
 
     #[rstest]
-    fn pop_should_recover_flags_and_accumulator(mut cpu: Cpu) {
+    fn pop_should_recover_flags_and_accumulator(mut cpu: Cpu) -> Result<()>{
         let sp = 0x2c00;
         cpu.state.set_sp(sp);
-        cpu.mmu.write_byte(sp, 0xc3);
-        cpu.mmu.write_byte(sp + 1, 0xff);
+        cpu.mmu.write_byte(sp, 0xc3)?;
+        cpu.mmu.write_byte(sp + 1, 0xff)?;
 
-        cpu.exec(Pop(BytePair::AF)).unwrap();
+        cpu.exec(Pop(BytePair::AF))?;
 
         assert!(cpu.state.flag(Sign));
         assert!(cpu.state.flag(Zero));
@@ -381,6 +383,7 @@ mod pair_register {
         assert!(!cpu.state.flag(Parity));
         assert!(cpu.state.flag(Carry));
         assert_eq!(cpu.state.a, 0xff);
+        Ok(())
     }
 
     #[rstest]
@@ -399,7 +402,7 @@ mod pair_register {
         assert!(!cpu.state.flags.get(Carry));
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     r, r0, r1,
     case(BC, 0x32, 0xf1),
     case(DE, 0x02, 0xac),
@@ -425,7 +428,7 @@ mod pair_register {
         assert_eq!(cpu.hl(), 0xd51a);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     hl, rp, sum, expected,
     case(0xffff, RegPair::DE, 0x0001, true),
     case(0xffff, RegPair::BC, 0x0000, false),
@@ -442,7 +445,7 @@ mod pair_register {
         assert_eq!(cpu.carry(), expected)
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     rp, query, expected,
     case(RegPair::BC, (ByteReg::B, ByteReg::C), (0x10, 0xa7)),
     case(RegPair::DE, (ByteReg::D, ByteReg::E), (0x20, 0xe7)),
@@ -455,7 +458,7 @@ mod pair_register {
         assert_eq!(query.ask(&cpu), expected);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     init, rp, query, expected,
     case(RegPairValue::BC(0x00, 0xff), RegPair::BC, (ByteReg::B, ByteReg::C), (0x01, 0x00)),
     case(RegPairValue::BC(0xff, 0xff), RegPair::BC, (ByteReg::B, ByteReg::C), (0x00, 0x00)),
@@ -475,7 +478,7 @@ mod pair_register {
         assert_eq!(query.ask(&cpu), expected);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     rp, query, expected,
     case(RegPair::BC, (ByteReg::B, ByteReg::C), (0x10, 0xa5)),
     case(RegPair::DE, (ByteReg::D, ByteReg::E), (0x20, 0xe5)),
@@ -488,7 +491,7 @@ mod pair_register {
         assert_eq!(query.ask(&cpu), expected);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     init, rp, query, expected,
     case(RegPairValue::BC(0xff, 0x00), RegPair::BC, (ByteReg::B, ByteReg::C), (0xfe, 0xff)),
     case(RegPairValue::BC(0x00, 0x00), RegPair::BC, (ByteReg::B, ByteReg::C), (0xff, 0xff)),
@@ -522,17 +525,18 @@ mod pair_register {
     }
 
     #[rstest]
-    fn xthl_should_swap_hl_and_two_bytes_pointed_by_stack_pointer(mut cpu: Cpu) {
+    fn xthl_should_swap_hl_and_two_bytes_pointed_by_stack_pointer(mut cpu: Cpu) -> Result<()>{
         let sp = 0x10ad;
         cpu.set_hl(0x0b3c);
         cpu.state.set_sp(sp);
-        cpu.mmu.write(sp, &[0x0d, 0xf0]);
+        cpu.mmu.write(sp, &[0x0d, 0xf0])?;
 
-        cpu.exec(Xthl).unwrap();
+        cpu.exec(Xthl)?;
 
         assert_eq!(cpu.hl(), 0xf00d);
         assert_eq!(cpu.mmu.read_byte(sp), Ok(0x3c));
         assert_eq!(cpu.mmu.read_byte(sp + 1), Ok(0x0b));
+        Ok(())
     }
 
     #[rstest]
@@ -548,7 +552,7 @@ mod pair_register {
 mod immediate {
     use super::*;
 
-    #[rstest_parametrize(
+    #[rstest(
     rp, query, expected,
     case(RegPairValue::BC(0xe4, 0xf1), (ByteReg::B, ByteReg::C), (0xe4, 0xf1)),
     case(RegPairValue::DE(0x20, 0xb1), (ByteReg::D, ByteReg::E), (0x20, 0xb1)),
@@ -561,7 +565,7 @@ mod immediate {
         assert_eq!(query.ask(&cpu), expected);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     r, val,
     case(Reg::B, 0x34),
     case(Reg::D, 0xf3),
@@ -586,7 +590,7 @@ mod immediate {
     }
 }
 
-#[rstest_parametrize(
+#[rstest(
 init, query, expected,
 case(RegValue::B(0x00), Zero, true),
 case(RegValue::B(0x12), Zero, false),
@@ -604,20 +608,20 @@ case(RegValue::D(0x01), Parity, false),
 case(RegValue::D(0x1f), Parity, false),
 case(RegValue::D(0x37), Parity, false),
 )]
-fn static_flags<Q, R>(mut cpu: Cpu, init: RegValue, query: Q, expected: R)
+fn static_flags<Q, R>(mut cpu: Cpu, init: RegValue, query: Q, expected: R) -> Result<()>
     where R: QueryResult, Q: CpuQuery<Result=R>
 {
     init.apply(&mut cpu);
 
-    cpu.fix_static_flags(init.into());
-
+    cpu.fix_static_flags(init.into())?;
     assert_eq!(query.ask(&cpu), expected);
+    Ok(())
 }
 
 mod single_register {
     use super::*;
 
-    #[rstest_parametrize(
+    #[rstest(
     init, reg, query, expected,
     case(RegValue::A(0x33), Reg::A, ByteReg::A, 0x34),
     case(RegValue::B(0x00), Reg::B, ByteReg::B, 0x01),
@@ -629,110 +633,118 @@ mod single_register {
     case(RegValue::M(0x12), Reg::M, ByteReg::M, 0x13),
     )]
     fn inr_should_increment_register<I, Q, R>(mut cpu: Cpu, init: I, reg: Reg, query: Q, expected: R)
+        -> Result<()>
         where I: Apply, R: QueryResult, Q: CpuQuery<Result=R>
     {
         init.apply(&mut cpu);
 
-        cpu.inr(reg);
+        cpu.inr(reg)?;
 
         assert_eq!(query.ask(&cpu), expected);
+        Ok(())
     }
 
     #[rstest]
-    fn inr_should_update_flags(mut cpu: Cpu)
+    fn inr_should_update_flags(mut cpu: Cpu) -> Result<()>
     {
         cpu.state.set_b(0xfd);
 
-        cpu.inr(Reg::B);
+        cpu.inr(Reg::B)?;
 
         //0xfe
         assert!(!cpu.state.flag(Zero));
         assert!(cpu.state.flag(Sign));
         assert!(!cpu.state.flag(Parity));
 
-        cpu.inr(Reg::B);
+        cpu.inr(Reg::B)?;
 
         //0xff
         assert!(!cpu.state.flag(Zero));
         assert!(cpu.state.flag(Sign));
         assert!(cpu.state.flag(Parity));
 
-        cpu.inr(Reg::B);
+        cpu.inr(Reg::B)?;
 
         //0x00
         assert!(cpu.state.flag(Zero));
         assert!(!cpu.state.flag(Sign));
         assert!(cpu.state.flag(Parity));
+
+        Ok(())
     }
 
     #[rstest]
-    fn inr_should_not_care_carry_flag(mut cpu: Cpu) {
+    fn inr_should_not_care_carry_flag(mut cpu: Cpu) -> Result<()>{
         cpu.state.set_b(0xff);
 
-        cpu.inr(Reg::B);
+        cpu.inr(Reg::B)?;
 
         assert!(!cpu.carry());
 
         cpu.carry_set();
 
-        cpu.inr(Reg::B);
+        cpu.inr(Reg::B)?;
 
         assert!(cpu.carry());
+        Ok(())
     }
 
     #[rstest]
-    fn dcr_should_decrement_register(mut cpu: Cpu)
+    fn dcr_should_decrement_register(mut cpu: Cpu) -> Result<()>
     {
         cpu.state.set_d(0x12);
 
-        cpu.dcr(Reg::D);
+        cpu.dcr(Reg::D)?;
 
         assert_eq!(cpu.state.d, 0x11);
+        Ok(())
     }
 
     #[rstest]
-    fn dcr_should_update_flags(mut cpu: Cpu)
+    fn dcr_should_update_flags(mut cpu: Cpu) -> Result<()>
     {
         cpu.state.set_b(0x02);
 
-        cpu.dcr(Reg::B);
+        cpu.dcr(Reg::B)?;
 
         //0x01
         assert!(!cpu.state.flag(Zero));
         assert!(!cpu.state.flag(Sign));
         assert!(!cpu.state.flag(Parity));
 
-        cpu.dcr(Reg::B);
+        cpu.dcr(Reg::B)?;
 
         //0x00
         assert!(cpu.state.flag(Zero));
         assert!(!cpu.state.flag(Sign));
         assert!(cpu.state.flag(Parity));
 
-        cpu.dcr(Reg::B);
+        cpu.dcr(Reg::B)?;
 
         //0xff
         assert!(!cpu.state.flag(Zero));
         assert!(cpu.state.flag(Sign));
         assert!(cpu.state.flag(Parity));
+        Ok(())
     }
 
     #[rstest]
-    fn dcr_should_not_care_carry_flag(mut cpu: Cpu) {
+    fn dcr_should_not_care_carry_flag(mut cpu: Cpu) -> Result<()>{
         cpu.state.set_b(0x00);
 
-        cpu.dcr(Reg::B);
+        cpu.dcr(Reg::B)?;
 
         assert!(!cpu.carry());
 
         cpu.carry_set();
 
-        cpu.dcr(Reg::B);
+        cpu.dcr(Reg::B)?;
 
         assert!(cpu.carry());
+        Ok(())
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     cmd, init, after,
     case(Inr(Reg::A), RegValue::A(0xa3), 0xa4),
     case(Dcr(Reg::B), RegValue::B(0x32), 0x31),
@@ -781,7 +793,7 @@ mod data_transfer {
         assert_eq!(cpu.mmu.read_byte(0x3f16), Ok(0x32));
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     reg_pair,
     case(RegPair::HL),
     case(RegPair::SP),
@@ -791,18 +803,19 @@ mod data_transfer {
     }
 
     #[rstest]
-    fn ldax_should_load_accumulator(mut cpu: Cpu) {
+    fn ldax_should_load_accumulator(mut cpu: Cpu) -> Result<()>{
         let address = 0x78a2;
-        cpu.mmu.write_byte(address, 0x21);
+        cpu.mmu.write_byte(address, 0x21)?;
         cpu.set_de(address);
         cpu.state.set_a(0xad);
 
-        cpu.exec(Ldax(RegPair::DE)).unwrap();
+        cpu.exec(Ldax(RegPair::DE))?;
 
         assert_eq!(cpu.state.a, 0x21);
+        Ok(())
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     reg_pair,
     case(RegPair::HL),
     case(RegPair::SP),
@@ -815,7 +828,7 @@ mod data_transfer {
 mod accumulator {
     use super::*;
 
-    #[rstest_parametrize(
+    #[rstest(
     start, value, expected,
     case(0x12, 0xa0, 0xb2),
     case(0x54, 0x33, 0x87),
@@ -851,7 +864,7 @@ mod accumulator {
         assert_eq!(Sign.ask(&cpu), false);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     start, init, cmd, expected,
     case(0x12, RegValue::B(0xa0), Add(Reg::B), 0xb2),
     case(0x12, (), Add(Reg::A), 0x24),
@@ -872,7 +885,7 @@ mod accumulator {
         assert_eq!(expected, cpu.state.a.val);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     start, value, expected,
     case(0xfd, 0x04, 0xf9),
     case(0x12, 0xa0, 0x72),
@@ -887,16 +900,17 @@ mod accumulator {
     }
 
     #[rstest]
-    fn accumulator_sub_should_update_carry_flag(mut cpu: Cpu) {
+    fn accumulator_sub_should_update_carry_flag(mut cpu: Cpu) -> Result<()>{
         cpu.state.set_a(0x10);
         cpu.state.set_b(0x13);
 
-        cpu.sub(Reg::B);
+        cpu.sub(Reg::B)?;
 
         assert!(cpu.carry());
+        Ok(())
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     start, init, cmd, expected,
     case(0x32, RegValue::B(0x03), Sub(Reg::B), 0x2f),
     case(0x12, (), Sub(Reg::A), 0x0),
@@ -917,51 +931,59 @@ mod accumulator {
         assert_eq!(expected, cpu.state.a.val);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     start, other, expected,
     case(0x81, 0x7e, 0x00),
     case(0xa6, 0xa2, 0xa2),
     case(0x5a, 0xff, 0x5a),
     )]
-    fn ana_should_perform_logical_and(mut cpu: Cpu, start: Byte, other: Byte, expected: Byte) {
+    fn ana_should_perform_logical_and(mut cpu: Cpu, start: Byte, other: Byte, expected: Byte) 
+        -> Result<()>
+    {
         cpu.state.set_a(start);
 
-        cpu.accumulator_and(other);
+        cpu.accumulator_and(other)?;
 
         assert_eq!(cpu.state.a, expected);
+        Ok(())
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     start, other, expected,
     case(0x81, 0x7e, 0xff),
     case(0xa6, 0xa2, 0x04),
     case(0x5a, 0xff, 0xa5),
     )]
     fn accumulator_xor_should_perform_logical_xor(mut cpu: Cpu, start: Byte, other: Byte, expected: Byte)
+     -> Result<()>
     {
         cpu.state.set_a(start);
 
-        cpu.accumulator_xor(other);
+        cpu.accumulator_xor(other)?;
 
         assert_eq!(cpu.state.a, expected);
+        Ok(())
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     start, other, expected,
     case(0x81, 0x7e, 0xff),
     case(0xa6, 0xa2, 0xa6),
     case(0x01, 0x80, 0x81),
     case(0x00, 0x00, 0x00),
     )]
-    fn accumulator_or_should_perform_logical_or(mut cpu: Cpu, start: Byte, other: Byte, expected: Byte) {
+    fn accumulator_or_should_perform_logical_or(mut cpu: Cpu, start: Byte, other: Byte, expected: Byte) 
+     -> Result<()>
+    {
         cpu.state.set_a(start);
 
-        cpu.accumulator_or(other);
+        cpu.accumulator_or(other)?;
 
         assert_eq!(cpu.state.a, expected);
+        Ok(())
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     start, init, cmd, expected,
     case(0xa6, RegValue::L(0xa2), Xra(Reg::L), 0x04),
     case(0x81, RegValue::H(0x7e), Ora(Reg::H), 0xff),
@@ -981,7 +1003,7 @@ mod accumulator {
         assert_eq!(cpu.state.a, expected);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     a, v, zero, carry,
     case(0x34, 0x34, true, false),
     case(0x10, 0x12, false, true),
@@ -999,7 +1021,7 @@ mod accumulator {
         assert_eq!(cpu.state.a, a);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     a, init, cmd, carry,
     case(0x10, RegValue::B(0x12), Cmp(Reg::B), true),
     case(0x10, RegValue::E(0x0f), Cmp(Reg::E), false),
@@ -1017,7 +1039,7 @@ mod accumulator {
         assert_eq!(cpu.carry(), carry);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     cmd, a, b,
     case(Add(Reg::B), 0xfe, 0x01),
     case(Adc(Reg::B), 0xfe, 0x01),
@@ -1039,7 +1061,7 @@ mod accumulator {
         assert!(cpu.state.flag(Parity));
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     cmd,
     case(Ana(Reg::B)),
     case(Xra(Reg::B)),
@@ -1093,7 +1115,7 @@ mod carry_bit {
 mod rotate_accumulator {
     use super::*;
 
-    #[rstest_parametrize(
+    #[rstest(
     op, before, after, carry,
     case(Rlc, 0xf2, 0xe5, true),
     case(Rlc, 0x00, 0x00, false),
@@ -1114,7 +1136,7 @@ mod rotate_accumulator {
         assert_eq!(cpu.carry(), carry);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     op, before, carry_before, after, carry,
     case(Ral, 0xf2, true, 0xe5, true),
     case(Ral, 0x00, true, 0x01, false),
@@ -1152,14 +1174,15 @@ fn sta_should_store_accumulator(mut cpu: Cpu) {
 }
 
 #[rstest]
-fn lda_should_load_accumulator(mut cpu: Cpu) {
+fn lda_should_load_accumulator(mut cpu: Cpu) -> Result<()>{
     let expected = 0xae;
     let addr = 0x320f;
-    cpu.mmu.write_byte(addr, expected);
+    cpu.mmu.write_byte(addr, expected)?;
 
-    cpu.exec(Lda(addr)).unwrap();
+    cpu.exec(Lda(addr))?;
 
     assert_eq!(cpu.state.a, expected);
+    Ok(())
 }
 
 #[rstest]
@@ -1175,16 +1198,17 @@ fn shld_should_store_hl_pair(mut cpu: Cpu) {
 }
 
 #[rstest]
-fn lhld_should_load_hl_pair(mut cpu: Cpu) {
+fn lhld_should_load_hl_pair(mut cpu: Cpu) -> Result<()> {
     let hl = 0xd1f2;
     let addr = 0x2031;
 
-    cpu.mmu.write_byte(addr, 0xf2);
-    cpu.mmu.write_byte(addr + 1, 0xd1);
+    cpu.mmu.write_byte(addr, 0xf2)?;
+    cpu.mmu.write_byte(addr + 1, 0xd1)?;
 
-    cpu.exec(Lhld(addr)).unwrap();
+    cpu.exec(Lhld(addr))?;
 
     assert_eq!(cpu.hl(), hl);
+    Ok(())
 }
 
 #[rstest]
@@ -1206,7 +1230,7 @@ fn jump_should_load_pc(mut cpu: Cpu) {
     assert_eq!(cpu.state.pc, addr);
 }
 
-#[rstest_parametrize(
+#[rstest(
 start, init, cmd, expected,
 case(0x3202, Carry, J(CondFlag::C, 0xa030), 0xa030),
 case(0x3202, (), J(CondFlag::C, 0xa030), 0x3202),
@@ -1239,38 +1263,41 @@ fn jump_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
 }
 
 #[rstest]
-fn push_addr_should_push_high_part_first(mut cpu: Cpu) {
+fn push_addr_should_push_high_part_first(mut cpu: Cpu) -> Result<()>{
     let sp = 0x4212;
     let addr = 0xad12;
     cpu.state.set_sp(sp);
 
-    cpu.push_addr(addr);
+    cpu.push_addr(addr)?;
 
     assert_eq!(Ok(0xad), cpu.mmu.read_byte(sp - 1));
     assert_eq!(Ok(0x12), cpu.mmu.read_byte(sp - 2));
+    Ok(())
 }
 
 #[rstest]
-fn pop_addr_should_pop_low_part_first(mut cpu: Cpu) {
+fn pop_addr_should_pop_low_part_first(mut cpu: Cpu) -> Result<()>{
     let sp = 0x4212;
     let addr = 0xad12;
     cpu.state.set_sp(sp);
 
-    cpu.mmu.write_byte(sp, 0x12).unwrap();
-    cpu.mmu.write_byte(sp + 1, 0xad).unwrap();
+    cpu.mmu.write_byte(sp, 0x12)?;
+    cpu.mmu.write_byte(sp + 1, 0xad)?;
 
-    assert_eq!(addr, cpu.pop_addr().unwrap());
+    assert_eq!(addr, cpu.pop_addr()?);
+    Ok(())
 }
 
 #[rstest]
-fn push_and_pop_addr_round_trip(mut cpu: Cpu) {
+fn push_and_pop_addr_round_trip(mut cpu: Cpu) -> Result<()>{
     let sp = 0x4212;
     let addr = 0xad12;
     cpu.state.set_sp(sp);
 
-    cpu.push_addr(addr);
+    cpu.push_addr(addr)?;
 
-    assert_eq!(addr, cpu.pop_addr().unwrap());
+    assert_eq!(addr, cpu.pop_addr()?);
+    Ok(())
 }
 
 #[rstest]
@@ -1286,7 +1313,7 @@ fn call_should_change_pc_and_push_return_address_on_stack(mut cpu: Cpu) {
     assert_eq!(cpu.pop_addr(), Ok(start));
 }
 
-#[rstest_parametrize(
+#[rstest(
 start, init, cmd, expected,
 case(0x3202, Carry, C(CondFlag::C, 0xa030), 0xa030),
 case(0x3202, (), C(CondFlag::C, 0xa030), 0x3202),
@@ -1319,35 +1346,37 @@ fn call_conditionals<A>(mut cpu: Cpu, start: Address, init: A,
 }
 
 #[rstest]
-fn ret_should_pop_address_from_stack_and_then_jump_to_it(mut cpu: Cpu) {
+fn ret_should_pop_address_from_stack_and_then_jump_to_it(mut cpu: Cpu) -> Result<()>{
     let start = 0x4212;
     let addr = 0xad12;
     cpu.state.set_pc(start);
-    cpu.push_addr(addr);
+    cpu.push_addr(addr)?;
 
-    cpu.exec(Ret).unwrap();
+    cpu.exec(Ret)?;
 
     assert_eq!(cpu.state.pc, addr);
+    Ok(())
 }
 
 #[rstest]
-fn ret_should_walk_the_stack(mut cpu: Cpu) {
+fn ret_should_walk_the_stack(mut cpu: Cpu) -> Result<()>{
     let addr = vec![0xad12, 0xe210, 0x0020];
-    cpu.push_addr(addr[0]);
-    cpu.push_addr(addr[1]);
-    cpu.push_addr(addr[2]);
+    cpu.push_addr(addr[0])?;
+    cpu.push_addr(addr[1])?;
+    cpu.push_addr(addr[2])?;
 
-    cpu.exec(Ret).unwrap();
+    cpu.exec(Ret)?;
     assert_eq!(cpu.state.pc, addr[2]);
 
-    cpu.exec(Ret).unwrap();
+    cpu.exec(Ret)?;
     assert_eq!(cpu.state.pc, addr[1]);
 
-    cpu.exec(Ret).unwrap();
+    cpu.exec(Ret)?;
     assert_eq!(cpu.state.pc, addr[0]);
+    Ok(())
 }
 
-#[rstest_parametrize(
+#[rstest(
 start, addr, init, cmd, expected,
 case(0x3202, 0xa030, Carry, R(CondFlag::C), 0xa030),
 case(0x3202, 0xa030, (), R(CondFlag::C), 0x3202),
@@ -1367,26 +1396,28 @@ case(0x3202, 0xa030, Parity, R(CondFlag::PO), 0x3202),
 case(0x3202, 0xa030, (), R(CondFlag::PO), 0xa030),
 )]
 fn return_conditionals<A>(mut cpu: Cpu, start: Address, addr: Address, init: A,
-                          cmd: Instruction, expected: Address)
+                          cmd: Instruction, expected: Address) -> Result<()>
     where
         A: Apply
 {
     cpu.state.set_pc(start);
-    cpu.push_addr(addr);
+    cpu.push_addr(addr)?;
     init.apply(&mut cpu);
 
-    cpu.exec(cmd).unwrap();
+    cpu.exec(cmd)?;
 
-    assert_eq!(cpu.state.pc, expected)
+    assert_eq!(cpu.state.pc, expected);
+    Ok(())
 }
 
 #[rstest]
-fn return_conditional_should_not_pop_address_if_condition_dont_meet(mut cpu: Cpu) {
-    cpu.push_addr(0x4320);
+fn return_conditional_should_not_pop_address_if_condition_dont_meet(mut cpu: Cpu) -> Result<()> {
+    cpu.push_addr(0x4320)?;
 
-    cpu.exec(R(CondFlag::C)).unwrap();
+    cpu.exec(R(CondFlag::C))?;
 
-    assert_eq!(cpu.pop_addr(), Ok(0x4320))
+    assert_eq!(cpu.pop_addr(), Ok(0x4320));
+    Ok(())
 }
 
 #[rstest]
@@ -1448,7 +1479,7 @@ fn cma_should_not_change_flags(mut cpu: Cpu) {
     assert!(cpu.state.flag(Zero))
 }
 
-#[rstest_parametrize(
+#[rstest(
 state, after,
 case((0x9b, false, false), (0x01, true, true)),
 case((0x00, false, false), (0x00, false, false)),
@@ -1490,7 +1521,7 @@ fn daa_should_update_static_flags(mut cpu: Cpu) {
     assert_eq!(Parity.ask(&cpu), true);
 }
 
-#[rstest_parametrize(
+#[rstest(
 init, cmd, expected,
 case(RegValue::B(0xaf), Inr(Reg::B), true),
 case(RegValue::D(0xf8), Inr(Reg::D), false),
@@ -1552,7 +1583,7 @@ fn should_affect_aux_carry<I: Apply>(mut cpu: Cpu, init: I, cmd: Instruction, ex
     assert_eq!(expected, cpu.state.flags.get(AuxCarry));
 }
 
-#[rstest_parametrize(
+#[rstest(
 init, cmd,
 case(RegValue::B(0xaf), Xra(Reg::B)),
 )]
@@ -1663,64 +1694,69 @@ mod irq_instruction {
     use super::*;
 
     #[rstest]
-    fn should_not_advance_pc(mut cpu: Cpu) {
+    fn should_not_advance_pc(mut cpu: Cpu) -> Result<()> {
         let address = 0x3200;
         cpu.state.set_pc(address);
 
-        cpu.irq(IrqCmd::RawCmd(Nop));
+        cpu.irq(IrqCmd::RawCmd(Nop))?;
 
         assert_eq!(cpu.state.pc, address);
+        Ok(())
     }
 
     #[rstest]
-    fn should_disable_irq(mut cpu: Cpu) {
+    fn should_disable_irq(mut cpu: Cpu) -> Result<()> {
         assert!(cpu.interrupt_enabled);
 
-        cpu.irq(IrqCmd::Irq3);
+        cpu.irq(IrqCmd::Irq3)?;
 
         assert!(!cpu.interrupt_enabled);
+        Ok(())
     }
 
     #[rstest]
-    fn should_wake_up_cpu(mut cpu: Cpu) {
+    fn should_wake_up_cpu(mut cpu: Cpu) -> Result<()> {
         cpu.run_state = CpuState::Stopped;
 
-        cpu.irq(IrqCmd::Irq3);
+        cpu.irq(IrqCmd::Irq3)?;
 
         assert!(cpu.is_running());
+        Ok(())
     }
 
     #[rstest]
-    fn should_execute_given_instruction(mut cpu: Cpu) {
+    fn should_execute_given_instruction(mut cpu: Cpu) -> Result<()>{
         cpu.state.set_pc(0x1234);
 
-        cpu.irq(IrqCmd::Irq3);
+        cpu.irq(IrqCmd::Irq3)?;
 
         assert_eq!(cpu.state.pc, 0x0018);
+        Ok(())
     }
 
     #[rstest]
-    fn raw_execution(mut cpu: Cpu) {
+    fn raw_execution(mut cpu: Cpu) -> Result<()> {
         cpu.state.set_pc(0x1234);
 
-        cpu.irq(IrqCmd::RawCmd(Ei));
+        cpu.irq(IrqCmd::RawCmd(Ei))?;
 
         assert!(cpu.interrupt_enabled);
+        Ok(())
     }
 
 }
 
 #[rstest]
-fn run_should_load_instruction_at_pc_and_exec_it(mut cpu: Cpu) {
+fn run_should_load_instruction_at_pc_and_exec_it(mut cpu: Cpu) -> Result<()> {
     // 0xec, 0x22, 0x14 -> Cpe(0x1422)
-    cpu.mmu.write(0x1234, &[0xec, 0x22, 0x14]);
+    cpu.mmu.write(0x1234, &[0xec, 0x22, 0x14])?;
     cpu.state.set_pc(0x1234);
 
     cpu.state.flags.clear(Parity);
     // cpu.apply(C(CondFlag::PE, (0x1422));
     // No call
 
-    cpu.run().unwrap();
+    cpu.run()?;
 
     assert_eq!(0x1237, cpu.state.pc.val);
 
@@ -1728,7 +1764,8 @@ fn run_should_load_instruction_at_pc_and_exec_it(mut cpu: Cpu) {
     cpu.state.flags.set(Parity);
 
     // Should call
-    cpu.run().unwrap();
+    cpu.run()?;
 
     assert_eq!(0x1422, cpu.state.pc.val);
+    Ok(())
 }

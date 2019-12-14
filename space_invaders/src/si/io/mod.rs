@@ -207,7 +207,7 @@ mod test {
         assert_eq!(DEFAULT_PORT2, io.read(PORT2));
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     port, event, state, bit, set,
     case(PORT1, Ev::Coin, true, COIN_BIT, false),
     case(PORT1, Ev::Coin, false, COIN_BIT, true),
@@ -239,7 +239,7 @@ mod test {
         assert!(io.read(port) & mask == expected);
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     lives, value,
     case(0, 0),
     case(3, 0),

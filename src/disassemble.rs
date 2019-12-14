@@ -141,7 +141,7 @@ impl<I: Iterator<Item=Result<Byte, CpuError>>> Iterator for CodeIterator<I> {
 mod test {
     use super::*;
 
-    use rstest::rstest_parametrize;
+    use rstest::rstest;
 
     fn parse_str_bytes<S: AsRef<str>>(s: S) -> Vec<Byte> {
         s.as_ref().split(' ')
@@ -149,7 +149,7 @@ mod test {
             .collect()
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     bytes, code, length, desc,
     case("00", 0x00, 1, "NOP"),
     case("01 a4 32", 0x01, 3, "LXI    BC,#0x32a4"),
@@ -409,7 +409,7 @@ mod test {
         assert_eq!(desc, &format!("{}", d));
     }
 
-    #[rstest_parametrize(opcode,
+    #[rstest(opcode,
     case(0x08),
     case(0x10),
     case(0x18),

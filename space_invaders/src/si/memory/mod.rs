@@ -266,7 +266,7 @@ Mirror:
 #[cfg(test)]
 mod test {
     use super::*;
-    use rstest::{rstest_parametrize, fixture};
+    use rstest::{rstest, fixture};
     use rs8080::Address;
     use rs8080::Byte;
 
@@ -278,7 +278,7 @@ mod test {
     mod ram {
         use super::*;
 
-        #[rstest_parametrize(
+        #[rstest(
         address, value,
         case(0x2000, 0xE1),
         case(0x2020, 0xA5),
@@ -294,7 +294,7 @@ mod test {
     mod rom {
         use super::*;
 
-        #[rstest_parametrize(
+        #[rstest(
         address, value,
         case(0x0000, 0xA2),
         case(0x1203, 0xE1),
@@ -304,7 +304,7 @@ mod test {
             assert!(zmem.write_byte(address, value).is_err());
         }
 
-        #[rstest_parametrize(
+        #[rstest(
         address, value,
         case(0x0000, 0xA2),
         case(0x1203, 0xE1),
@@ -321,7 +321,7 @@ mod test {
     mod vram {
         use super::*;
 
-        #[rstest_parametrize(
+        #[rstest(
         address, value,
         case(0x2400, 0xE1),
         case(0x2420, 0xA5),
@@ -345,7 +345,7 @@ mod test {
             Mirror::default()
         }
 
-        #[rstest_parametrize(
+        #[rstest(
         address,
         case(0x4000),
         case(0x5420),
@@ -355,7 +355,7 @@ mod test {
             assert!(mirror.read_byte(address).is_err());
         }
 
-        #[rstest_parametrize(
+        #[rstest(
         address, value,
         case(0x4000, 0xE1),
         case(0x5420, 0xA5),
@@ -366,7 +366,7 @@ mod test {
         }
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     address, value,
     case(0x4000, 0xE1),
     case(0x4100, 0xA5),
@@ -376,7 +376,7 @@ mod test {
         assert!(zmem.write_byte(address, value).is_ok());
     }
 
-    #[rstest_parametrize(
+    #[rstest(
     address, value,
     case(0x4200, 0xE1),
     case(0xffff, 0x1A),
